@@ -12,7 +12,8 @@
     "test:marketcap": "node scripts/test-marketcap.js",
     "test:full": "node scripts/test-full.js",
     "test:batch": "node scripts/test-batch.js",
-    "test:batch:csv": "node scripts/test-batch.js --csv"
+    "test:batch:csv": "node scripts/test-batch.js --csv",
+    "test:intentflow": "node scripts/test-intent-flow.js"
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^3.0.6",

@@ -436,6 +436,124 @@
   font-size: 0.8rem;
 }
 
+.demo-sim-panel {
+  gap: 12px;
+}
+
+.demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.demo-actions button {
+  min-width: 220px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.toggle-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2f62f2;
+}
+
+.demo-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+}
+
+.demo-kv {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: #fbfdff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.demo-kv p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.demo-kv strong {
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
+.demo-guards {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.demo-steps-label {
+  margin-top: 12px;
+}
+
+.demo-steps {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  display: grid;
+  gap: 6px;
+}
+
+.mev-panel {
+  gap: 12px;
+}
+
+.mev-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 14px;
+}
+
+.mev-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.mev-list strong {
+  color: var(--text-primary);
+}
+
+.mev-snapshot {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: #fbfdff;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.mev-snapshot p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.mev-snapshot strong {
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
 .metric-stack h3 {
   margin: 0;
   font-size: 1.5rem;
@@ -1044,6 +1162,8 @@ button:focus-visible,
   .visual-strip,
   .infographics-grid,
   .kpi-banner,
+  .demo-grid,
+  .mev-grid,
   .insights-grid,
   .stats-grid {
     grid-template-columns: 1fr;

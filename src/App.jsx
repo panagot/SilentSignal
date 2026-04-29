@@ -58,6 +58,35 @@ const CA_PRESETS = [
     tokenAddress: '0x696969A73cFE28165e94f0924D3c940A55BC483e',
   },
 ]
+const WETH_MAINNET = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+const WRAPPED_NATIVE_BY_CHAIN = {
+  'eth-mainnet': WETH_MAINNET,
+  'base-mainnet': '0x4200000000000000000000000000000000000006',
+  'matic-mainnet': '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
+  'bsc-mainnet': '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+}
+const DEFAULT_MEV_POLICY = {
+  privateRelay: true,
+  commitReveal: true,
+  shortLivedIntent: true,
+  onchainGuardrails: true,
+  randomizedSlicing: true,
+  solverAllowlist: true,
+  batchAuctionWindow: true,
+}
+
+function buildMevPolicy(enabled) {
+  if (enabled) return { ...DEFAULT_MEV_POLICY }
+  return {
+    privateRelay: false,
+    commitReveal: false,
+    shortLivedIntent: false,
+    onchainGuardrails: true,
+    randomizedSlicing: false,
+    solverAllowlist: false,
+    batchAuctionWindow: false,
+  }
+}
 
 function formatCurrency(value) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -87,6 +116,34 @@ function formatCompactCurrency(value) {
 function shortAddress(address) {
   if (!address) return 'anonymous'
   return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+function deterministicTrustFromAddress(address) {
+  const hex = String(address).replace(/^0x/i, '').slice(-8)
+  const seed = Number.parseInt(hex || '0', 16)
+  return 45 + (seed % 41) // 45..85
+}
+
+function simpleHash(input) {
+  const text = String(input)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `0x${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
+function createRandomizedSlices(totalAmount, count = 3) {
+  const total = Number(totalAmount)
+  if (!Number.isFinite(total) || total <= 0) return [0]
+  const weights = Array.from({ length: count }, () => 0.4 + Math.random())
+  const sum = weights.reduce((acc, n) => acc + n, 0)
+  const raw = weights.map((w) => (w / sum) * total)
+  const rounded = raw.map((n) => Number(n.toFixed(6)))
+  const used = rounded.slice(0, -1).reduce((acc, n) => acc + n, 0)
+  rounded[rounded.length - 1] = Number(Math.max(0, total - used).toFixed(6))
+  return rounded
 }
 
 function isLikelyEvmAddress(value) {
@@ -121,6 +178,23 @@ async function fetchWalletStrength(client, chainName, wallet) {
   const normalizedTx = Math.min(100, Math.round((txCount / 200) * 100))
   const normalizedValue = Math.min(100, Math.round((totalUsdValue / 100000) * 100))
   return Math.round(normalizedTx * 0.6 + normalizedValue * 0.4)
+}
+
+async function fetchWalletStrengthFast(client, chainName, wallet, timeoutMs = 2500) {
+  const fallback = deterministicTrustFromAddress(wallet)
+  try {
+    const timed = await Promise.race([
+      fetchWalletStrength(client, chainName, wallet),
+      new Promise((resolve) => {
+        setTimeout(() => resolve(fallback), timeoutMs)
+      }),
+    ])
+    const numeric = Number(timed)
+    if (!Number.isFinite(numeric)) return fallback
+    return Math.max(0, Math.min(100, Math.round(numeric)))
+  } catch {
+    return fallback
+  }
 }
 
 async function fetchDexScreenerMarketCap(chainName, tokenAddress) {
@@ -275,6 +349,11 @@ function App() {
   })
   const [marketSnapshot, setMarketSnapshot] = useState(null)
   const [solverMatches, setSolverMatches] = useState([])
+  const [demoLoading, setDemoLoading] = useState(false)
+  const [demoResult, setDemoResult] = useState(null)
+  const [demoError, setDemoError] = useState('')
+  const [mevShieldEnabled, setMevShieldEnabled] = useState(true)
+  const mevPolicy = useMemo(() => buildMevPolicy(mevShieldEnabled), [mevShieldEnabled])
 
   const apiKey = import.meta.env.VITE_GOLDRUSH_API_KEY
   const latestIntent = useMemo(() => intents[0] ?? null, [intents])
@@ -391,6 +470,26 @@ function App() {
         }
       }
       const makerTrust = await fetchWalletStrength(client, chainName, makerWallet)
+      const candidateAllowlist = SAMPLE_SOLVERS.filter(
+        (solver) => solver.toLowerCase() !== makerWallet.toLowerCase(),
+      )
+        .sort(
+          (a, b) =>
+            deterministicTrustFromAddress(b) - deterministicTrustFromAddress(a),
+        )
+        .slice(0, 3)
+      const nonce = Math.floor(Date.now() + Math.random() * 1000000)
+      const expirySec = 120
+      const domain = `silentsignal:${chainName}:v1`
+      const commitmentHash = simpleHash(
+        `${chainName}|${intentType}|${tokenAddress}|${amount}|${maxSlippage}|${makerWallet}|${nonce}|${domain}`,
+      )
+      const slices = mevPolicy.randomizedSlicing
+        ? createRandomizedSlices(Number(amount), 3)
+        : [Number(amount)]
+      const batchWindowSec = mevPolicy.batchAuctionWindow
+        ? 8 + Math.floor(Math.random() * 18)
+        : 0
 
       setMarketSnapshot({
         ticker: tokenData.contract_ticker_symbol ?? 'TOKEN',
@@ -416,6 +515,16 @@ function App() {
             makerTrust,
             filledAmount: 0,
             resolver: null,
+            mev: {
+              ...mevPolicy,
+              nonce,
+              expirySec,
+              domain,
+              commitmentHash,
+              slices,
+              batchWindowSec,
+              allowlistedSolvers: candidateAllowlist,
+            },
           },
           ...prev,
         ].slice(0, 6),
@@ -440,9 +549,17 @@ function App() {
       setError('')
       const client = new GoldRushClient(apiKey)
       const maker = latestIntent.makerWallet.toLowerCase()
-      const candidateSolvers = SAMPLE_SOLVERS.filter(
+      let candidateSolvers = SAMPLE_SOLVERS.filter(
         (solver) => solver.toLowerCase() !== maker,
       )
+      if (
+        latestIntent?.mev?.solverAllowlist &&
+        Array.isArray(latestIntent?.mev?.allowlistedSolvers) &&
+        latestIntent.mev.allowlistedSolvers.length > 0
+      ) {
+        const allow = new Set(latestIntent.mev.allowlistedSolvers.map((s) => s.toLowerCase()))
+        candidateSolvers = candidateSolvers.filter((solver) => allow.has(solver.toLowerCase()))
+      }
 
       const matches = await Promise.all(
         candidateSolvers.map(async (solver) => {
@@ -501,6 +618,109 @@ function App() {
       setError(err?.message ?? 'Failed to resolve intent.')
     } finally {
       setResolving(false)
+    }
+  }
+
+  const handleRunOneEthDemo = async (mode) => {
+    if (!apiKey) {
+      setError('Missing VITE_GOLDRUSH_API_KEY. Add it to .env.local and restart.')
+      return
+    }
+    if (!isLikelyEvmAddress(tokenAddress)) {
+      setError('Enter a valid token contract first for simulation.')
+      return
+    }
+
+    try {
+      setDemoLoading(true)
+      setError('')
+      setDemoError('')
+      setDemoResult(null)
+      const client = new GoldRushClient(apiKey)
+      const wrappedNative = WRAPPED_NATIVE_BY_CHAIN[chainName] ?? WETH_MAINNET
+      const [tokenRes, wethRes] = await Promise.all([
+        client.PricingService.getTokenPrices(chainName, 'USD', tokenAddress),
+        client.PricingService.getTokenPrices(chainName, 'USD', wrappedNative),
+      ])
+      const token = tokenRes.data?.[0]
+      const tokenPrice = Number(token?.items?.[0]?.price ?? NaN)
+      const wethPrice = Number(wethRes.data?.[0]?.items?.[0]?.price ?? NaN)
+      if (!Number.isFinite(tokenPrice) || tokenPrice <= 0) {
+        throw new Error('Token pricing unavailable for simulation.')
+      }
+      if (!Number.isFinite(wethPrice) || wethPrice <= 0) {
+        throw new Error(
+          'Native asset pricing unavailable for this chain/token combination. Try another token or chain.',
+        )
+      }
+
+      const grossUsd = wethPrice
+      const maxSlip = Math.max(0, Number(maxSlippage) || 1.5)
+      const baseOut = grossUsd / tokenPrice
+
+      const candidateSolvers = SAMPLE_SOLVERS.filter(
+        (solver) => solver.toLowerCase() !== makerWallet.toLowerCase(),
+      ).slice(0, 3)
+      const bids = await Promise.all(
+        candidateSolvers.map(async (solver) => {
+          const trust = await fetchWalletStrengthFast(client, chainName, solver)
+          const spreadBps = Math.max(5, 120 - trust)
+          const efficiency = 1 - spreadBps / 10000
+          const afterSlip = 1 - maxSlip / 100
+          const estimatedOut = Math.max(0, baseOut * efficiency * afterSlip)
+          return {
+            solver,
+            trust,
+            spreadBps,
+            etaSec: Math.max(10, Math.round(90 - trust * 0.6)),
+            estimatedOut,
+          }
+        }),
+      )
+      bids.sort((a, b) => b.estimatedOut - a.estimatedOut)
+      const best = bids[0]
+      if (!best) {
+        throw new Error('No solver bids available for this simulation.')
+      }
+      const settlementGuardrails = {
+        maxInputEth: 1,
+        maxSlippagePct: maxSlip,
+        expirySec: 120,
+        partialFillsAllowed: mevPolicy.randomizedSlicing,
+      }
+
+      const simulationSteps = mevShieldEnabled
+        ? [
+            'Intent signed with nonce and domain',
+            'Commitment hash broadcast in private relay',
+            'Allowlisted solvers submit bids inside batch window',
+            'Best solver executes guarded settlement',
+          ]
+        : [
+            'Intent broadcast without privacy envelope',
+            'Open solver market reads full payload',
+            'Best quote selected directly',
+            'Settlement simulated with standard guardrails',
+          ]
+
+      setDemoResult({
+        mode,
+        chainName,
+        tokenSymbol: token?.contract_ticker_symbol ?? 'TOKEN',
+        tokenAddress,
+        tokenPrice,
+        wethPrice,
+        baseOut,
+        best,
+        bids,
+        settlementGuardrails,
+        simulationSteps,
+        mevShieldEnabled,
+      })
+    } catch (err) {
+      setDemoError(err?.message ?? 'Failed to run 1 ETH simulation.')
+    } finally {
+      setDemoLoading(false)
     }
   }
 
@@ -690,6 +910,14 @@ function App() {
           <button type="submit" disabled={loading || resolving}>
             {loading ? 'Publishing...' : 'Publish Intent'}
           </button>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={mevShieldEnabled}
+              onChange={(event) => setMevShieldEnabled(event.target.checked)}
+            />
+            <span>MEV Shield mode (private relay + commit-reveal + allowlist)</span>
+          </label>
           {error ? <p className="error">{error}</p> : null}
           </form>
 
@@ -730,6 +958,112 @@ function App() {
               }
             />
           </section>
+        </section>
+        <section className="panel demo-sim-panel">
+          <div className="panel-head">
+            <h2>1 ETH Live Simulation</h2>
+            <span className="micro-tag">Demo Ready</span>
+          </div>
+          <p className="muted">
+            Explains how SilentSignal works in practice: intent -&gt; solver bids -&gt; guarded settlement.
+          </p>
+          <div className="demo-actions">
+            <button
+              type="button"
+              onClick={() => handleRunOneEthDemo('buy')}
+              disabled={demoLoading || loading}
+            >
+              {demoLoading ? 'Simulating...' : 'Simulate Buy with 1 ETH'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRunOneEthDemo('sell')}
+              disabled={demoLoading || loading}
+            >
+              {demoLoading ? 'Simulating...' : 'Simulate Sell worth 1 ETH'}
+            </button>
+          </div>
+          <p className="field-help">
+            Simulation mode: <strong>{mevShieldEnabled ? 'MEV Shield ON' : 'MEV Shield OFF'}</strong>
+          </p>
+          {demoError ? <p className="error">{demoError}</p> : null}
+          {!demoResult ? (
+            <div className="empty-state">
+              <p className="empty-title">No simulation run yet</p>
+              <p className="muted">Select token contract and run buy/sell to generate solver outcome.</p>
+            </div>
+          ) : (
+            <div className="demo-grid">
+              <div className="demo-kv">
+                <p><strong>Mode</strong> {demoResult.mode.toUpperCase()}</p>
+                <p><strong>Pair</strong> 1 ETH -&gt; {demoResult.tokenSymbol}</p>
+                <p><strong>Token Price</strong> {formatTokenPrice(demoResult.tokenPrice)}</p>
+                <p><strong>ETH Price</strong> {formatTokenPrice(demoResult.wethPrice)}</p>
+                <p><strong>Raw Quote</strong> {formatCurrency(demoResult.baseOut)} {demoResult.tokenSymbol}</p>
+                <p>
+                  <strong>Best Solver</strong> {shortAddress(demoResult.best?.solver)} ({demoResult.best?.spreadBps} bps)
+                </p>
+                <p>
+                  <strong>Expected Fill</strong> {formatCurrency(demoResult.best?.estimatedOut)} {demoResult.tokenSymbol}
+                </p>
+              </div>
+              <div>
+                <p className="nav-label">Settlement guardrails</p>
+                <ul className="demo-guards">
+                  <li>Max input: {demoResult.settlementGuardrails.maxInputEth} ETH</li>
+                  <li>Max slippage: {demoResult.settlementGuardrails.maxSlippagePct}%</li>
+                  <li>Expiry: {demoResult.settlementGuardrails.expirySec}s</li>
+                  <li>Partial fills: {demoResult.settlementGuardrails.partialFillsAllowed ? 'enabled' : 'disabled'}</li>
+                  <li>Relay route: {demoResult.mevShieldEnabled ? 'private first' : 'public routing'}</li>
+                </ul>
+                <p className="nav-label demo-steps-label">Simulation steps</p>
+                <ul className="demo-steps">
+                  {demoResult.simulationSteps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+                <p className="field-help">
+                  This is a controlled simulation of solver competition with enforced limits, not direct solver custody.
+                </p>
+              </div>
+            </div>
+          )}
+        </section>
+        <section className="panel mev-panel">
+          <div className="panel-head">
+            <h2>MEV Shield Execution Model</h2>
+            <span className="micro-tag">{mevShieldEnabled ? 'Shield ON' : 'Shield OFF'}</span>
+          </div>
+          <div className="mev-grid">
+            <div>
+              <p className="nav-label">Protection rails</p>
+              <ul className="mev-list">
+                <li><strong>Private relay:</strong> solver fills routed privately first</li>
+                <li><strong>Commit-reveal:</strong> commitment hash published, details revealed at settle stage</li>
+                <li><strong>Short-lived intent:</strong> nonce + expiry + domain-scoped payload</li>
+                <li><strong>On-chain guardrails:</strong> max input, min output, slippage bounds</li>
+                <li><strong>Randomized slicing:</strong> staged partial fills to reduce footprint</li>
+                <li><strong>Solver allowlist:</strong> only trusted solvers see full payload</li>
+                <li><strong>Batch window:</strong> short auction window before final selection</li>
+              </ul>
+            </div>
+            <div className="mev-snapshot">
+              <p className="nav-label">Latest intent snapshot</p>
+              <p><strong>Commitment</strong> {latestIntent?.mev?.commitmentHash ?? '--'}</p>
+              <p><strong>Nonce</strong> {latestIntent?.mev?.nonce ?? '--'}</p>
+              <p><strong>Expiry</strong> {latestIntent?.mev?.expirySec ? `${latestIntent.mev.expirySec}s` : '--'}</p>
+              <p><strong>Domain</strong> {latestIntent?.mev?.domain ?? '--'}</p>
+              <p><strong>Slices</strong> {latestIntent?.mev?.slices?.join(' / ') ?? '--'}</p>
+              <p>
+                <strong>Allowlisted solvers</strong>{' '}
+                {latestIntent?.mev?.allowlistedSolvers?.length ?? 0}
+              </p>
+              <p>
+                <strong>Batch window</strong>{' '}
+                {latestIntent?.mev?.batchWindowSec ? `${latestIntent.mev.batchWindowSec}s` : '--'}
+              </p>
+            </div>
+          </div>
         </section>
         <section className="visual-strip">
           <article className="panel hero-visual">
