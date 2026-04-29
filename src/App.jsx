@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GoldRushClient } from '@covalenthq/client-sdk'
-import { BrowserProvider, Contract, parseEther, parseUnits } from 'ethers'
+import { BrowserProvider, Contract, formatEther, parseEther, parseUnits } from 'ethers'
 import './App.css'
 import {
   BASE_SEPOLIA_CHAIN_ID,
@@ -80,6 +80,45 @@ const DEFAULT_MEV_POLICY = {
   solverAllowlist: true,
   batchAuctionWindow: true,
 }
+const LIVE_DEMO_TXS = [
+  {
+    label: 'Sender -> Maker funding',
+    hash: '0x3528bfd2530204d254ae9a80b78201cdaf4502b92dad502af739375b387e4448',
+    amount: '0.0003 ETH',
+    note: 'Funds maker wallet for test execution.',
+  },
+  {
+    label: 'Sender -> Solver funding',
+    hash: '0x0b6fc3a3677cd96f5c93e603636dd5a2a0a41970f333e572ad2e6383a8755ed8',
+    amount: '0.0003 ETH',
+    note: 'Funds solver wallet for test execution.',
+  },
+  {
+    label: 'Maker -> Solver test transfer',
+    hash: '0xeed83f09fc8603ff49771d5190ed49cac829ba8757f662c86621365e76407f12',
+    amount: '0.00005 ETH',
+    note: 'Confirms real Sepolia transfer path works end-to-end.',
+  },
+]
+const LIVE_EXECUTION_EXPLAINERS = [
+  'These 3 txs prove real Sepolia wallet funding and transfer execution.',
+  'LP routing is demonstrated in simulation mode (Pool A/B/C split), not in these proof txs.',
+  'Live settlement contract flow is available in the panel above (Sign -&gt; Lock -&gt; Fill).',
+]
+const PRODUCT_PILLARS = [
+  {
+    title: 'Intent Abstraction',
+    text: 'Traders describe outcomes and constraints, not one fixed route.',
+  },
+  {
+    title: 'Solver Competition',
+    text: 'Execution agents compete to deliver the best fill quality.',
+  },
+  {
+    title: 'Stealth Controls',
+    text: 'MEV-shield rails reduce pre-trade information leakage.',
+  },
+]
 
 function buildMevPolicy(enabled) {
   if (enabled) return { ...DEFAULT_MEV_POLICY }
@@ -372,6 +411,8 @@ function App() {
   const [liveFillInputEth, setLiveFillInputEth] = useState('0.01')
   const [liveFillOutputTokens, setLiveFillOutputTokens] = useState('1')
   const [liveWorking, setLiveWorking] = useState(false)
+  const [walletChainId, setWalletChainId] = useState(null)
+  const [walletEthBalance, setWalletEthBalance] = useState('')
 
   const apiKey = import.meta.env.VITE_GOLDRUSH_API_KEY
   const latestIntent = useMemo(() => intents[0] ?? null, [intents])
@@ -768,7 +809,12 @@ function App() {
       setLiveStatus('')
       const { signer } = await requireWallet()
       const address = await signer.getAddress()
+      const provider = signer.provider
+      const network = await provider.getNetwork()
+      const balance = await provider.getBalance(address)
       setWalletAddress(address)
+      setWalletChainId(Number(network.chainId))
+      setWalletEthBalance(formatEther(balance))
       setLiveStatus(`Connected ${shortAddress(address)} on Base Sepolia`)
     } catch (err) {
       setLiveStatus(err?.message ?? 'Wallet connection failed.')
@@ -795,6 +841,36 @@ function App() {
       allowPartial: true,
     }
   }
+
+  const liveChecks = useMemo(() => {
+    const connected = Boolean(walletAddress)
+    const correctChain = Number(walletChainId) === BASE_SEPOLIA_CHAIN_ID
+    const contractValid = isLikelyEvmAddress(settlementAddress || '')
+    const hasEth = Number(walletEthBalance || 0) > 0
+    const hasSignature = Boolean(intentSignature)
+    const lockAmountValid = Number(liveMaxInputEth || 0) > 0
+    const fillAmountsValid =
+      Number(liveFillInputEth || 0) > 0 && Number(liveFillOutputTokens || 0) > 0
+
+    return [
+      { label: 'Wallet connected', pass: connected },
+      { label: 'Network = Base Sepolia', pass: correctChain },
+      { label: 'Settlement contract address valid', pass: contractValid },
+      { label: 'Wallet has test ETH for gas', pass: hasEth },
+      { label: 'Lock amount configured', pass: lockAmountValid },
+      { label: 'Intent signed (for Fill)', pass: hasSignature },
+      { label: 'Fill amounts configured', pass: fillAmountsValid },
+    ]
+  }, [
+    walletAddress,
+    walletChainId,
+    settlementAddress,
+    walletEthBalance,
+    intentSignature,
+    liveMaxInputEth,
+    liveFillInputEth,
+    liveFillOutputTokens,
+  ])
 
   const signLiveIntent = async () => {
     try {
@@ -967,6 +1043,14 @@ function App() {
           </div>
           <div className="wallet-pill">x402-ready architecture</div>
         </header>
+        <section className="pillars-row">
+          {PRODUCT_PILLARS.map((pillar) => (
+            <article key={pillar.title} className="pillar-card">
+              <p className="nav-label">{pillar.title}</p>
+              <p>{pillar.text}</p>
+            </article>
+          ))}
+        </section>
 
         {activeView === 'intent' ? (
         <>
@@ -1118,227 +1202,243 @@ function App() {
             />
           </section>
         </section>
-        <section className="panel demo-sim-panel">
+        <section className="panel execution-hub">
           <div className="panel-head">
-            <h2>1 ETH Live Simulation</h2>
-            <span className="micro-tag">Demo Ready</span>
+            <h2>Execution Hub: Simulation + Live</h2>
+            <span className="micro-tag">{mevShieldEnabled ? 'Shield ON' : 'Shield OFF'}</span>
           </div>
-          <p className="muted">
-            Explains how SilentSignal works in practice: intent -&gt; solver bids -&gt; guarded settlement.
-          </p>
-          <div className="demo-actions">
-            <button
-              type="button"
-              onClick={() => handleRunOneEthDemo('buy')}
-              disabled={demoLoading || loading}
-            >
-              {demoLoading ? 'Simulating...' : 'Simulate Buy with 1 ETH'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleRunOneEthDemo('sell')}
-              disabled={demoLoading || loading}
-            >
-              {demoLoading ? 'Simulating...' : 'Simulate Sell worth 1 ETH'}
-            </button>
-          </div>
-          <p className="field-help">
-            Simulation mode: <strong>{mevShieldEnabled ? 'MEV Shield ON' : 'MEV Shield OFF'}</strong>
-          </p>
-          {demoError ? <p className="error">{demoError}</p> : null}
-          {!demoResult ? (
-            <div className="empty-state">
-              <p className="empty-title">No simulation run yet</p>
-              <p className="muted">Select token contract and run buy/sell to generate solver outcome.</p>
+          <div className="hub-intro">
+            <p className="muted">Compare intent behavior in two modes:</p>
+            <div className="hub-badges">
+              <span>Simulation: multi-LP route split</span>
+              <span>Live: Base Sepolia on-chain tx flow</span>
+              <span>Proof: verifiable tx hashes</span>
             </div>
-          ) : (
-            <div className="demo-grid">
-              <div className="demo-kv">
-                <p><strong>Mode</strong> {demoResult.mode.toUpperCase()}</p>
-                <p><strong>Pair</strong> 1 ETH -&gt; {demoResult.tokenSymbol}</p>
-                <p><strong>Token Price</strong> {formatTokenPrice(demoResult.tokenPrice)}</p>
-                <p><strong>ETH Price</strong> {formatTokenPrice(demoResult.wethPrice)}</p>
-                <p><strong>Raw Quote</strong> {formatCurrency(demoResult.baseOut)} {demoResult.tokenSymbol}</p>
-                <p>
-                  <strong>Best Solver</strong> {shortAddress(demoResult.best?.solver)} ({demoResult.best?.spreadBps} bps)
-                </p>
-                <p>
-                  <strong>Expected Fill</strong> {formatCurrency(demoResult.best?.estimatedOut)} {demoResult.tokenSymbol}
-                </p>
+          </div>
+          <div className="hub-mode-banner">
+            <strong>{mevShieldEnabled ? 'MEV Shield ON' : 'MEV Shield OFF'}</strong>
+            <span>
+              {mevShieldEnabled
+                ? 'Private relay, commit-reveal, allowlist, and randomized slices are active.'
+                : 'Open-routing baseline mode for comparison demos and judge explanation.'}
+            </span>
+          </div>
+          <div className="execution-columns">
+            <article className="subpanel">
+              <div className="panel-head">
+                <h3>1 ETH Simulation</h3>
+                <span className="micro-tag">Demo Ready</span>
               </div>
-              <div>
-                <p className="nav-label">Settlement guardrails</p>
-                <ul className="demo-guards">
-                  <li>Max input: {demoResult.settlementGuardrails.maxInputEth} ETH</li>
-                  <li>Max slippage: {demoResult.settlementGuardrails.maxSlippagePct}%</li>
-                  <li>Expiry: {demoResult.settlementGuardrails.expirySec}s</li>
-                  <li>Partial fills: {demoResult.settlementGuardrails.partialFillsAllowed ? 'enabled' : 'disabled'}</li>
-                  <li>Relay route: {demoResult.mevShieldEnabled ? 'private first' : 'public routing'}</li>
-                </ul>
-                <p className="nav-label demo-steps-label">Simulation steps</p>
-                <ul className="demo-steps">
-                  {demoResult.simulationSteps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ul>
-                <p className="nav-label demo-steps-label">Liquidity route split</p>
-                <ul className="demo-routes">
-                  {demoResult.routeBreakdown.map((route) => (
-                    <li key={route.venue}>
-                      <span>{route.venue}</span>
-                      <strong>{route.pct}%</strong>
+              <div className="demo-actions">
+                <button
+                  type="button"
+                  onClick={() => handleRunOneEthDemo('buy')}
+                  disabled={demoLoading || loading}
+                >
+                  {demoLoading ? 'Simulating...' : 'Simulate Buy with 1 ETH'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunOneEthDemo('sell')}
+                  disabled={demoLoading || loading}
+                >
+                  {demoLoading ? 'Simulating...' : 'Simulate Sell worth 1 ETH'}
+                </button>
+              </div>
+              <p className="field-help">
+                Mode: <strong>{mevShieldEnabled ? 'MEV Shield ON' : 'MEV Shield OFF'}</strong>
+              </p>
+              {demoError ? <p className="error">{demoError}</p> : null}
+              {!demoResult ? (
+                <div className="empty-state">
+                  <p className="empty-title">No simulation run yet</p>
+                  <p className="muted">Run buy or sell to generate route split and solver outcome.</p>
+                </div>
+              ) : (
+                <div className="demo-grid">
+                  <div className="demo-kv">
+                    <p><strong>Mode</strong> {demoResult.mode.toUpperCase()}</p>
+                    <p><strong>Pair</strong> 1 ETH -&gt; {demoResult.tokenSymbol}</p>
+                    <p><strong>Best Solver</strong> {shortAddress(demoResult.best?.solver)}</p>
+                    <p><strong>Expected Fill</strong> {formatCurrency(demoResult.best?.estimatedOut)} {demoResult.tokenSymbol}</p>
+                    <p><strong>Eta</strong> {demoResult.best?.etaSec}s</p>
+                  </div>
+                  <div>
+                    <p className="nav-label">Liquidity route split</p>
+                    <ul className="demo-routes">
+                      {demoResult.routeBreakdown.map((route) => (
+                        <li key={route.venue}>
+                          <span>{route.venue}</span>
+                          <strong>{route.pct}%</strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </article>
+            <article className="subpanel">
+              <div className="panel-head">
+                <h3>Live Execution (Base Sepolia)</h3>
+                <span className="micro-tag">On-chain</span>
+              </div>
+              <div className="preflight">
+                <p className="nav-label">Preflight checks</p>
+                <ul className="check-list">
+                  {liveChecks.map((check) => (
+                    <li key={check.label} className={check.pass ? 'ok' : 'fail'}>
+                      <span>{check.pass ? 'OK' : 'X'}</span>
+                      <p>{check.label}</p>
                     </li>
                   ))}
                 </ul>
                 <p className="field-help">
-                  This is a controlled simulation of solver competition with enforced limits, not direct solver custody.
+                  Wallet: {walletAddress ? shortAddress(walletAddress) : 'not connected'} | Chain:{' '}
+                  {walletChainId ?? '--'} | Balance: {walletEthBalance || '--'} ETH
                 </p>
               </div>
-            </div>
-          )}
-        </section>
-        <section className="panel live-panel">
-          <div className="panel-head">
-            <h2>Live Execution (Base Sepolia)</h2>
-            <span className="micro-tag">On-chain</span>
+              <div className="live-grid">
+                <label>
+                  Settlement Contract
+                  <input
+                    value={settlementAddress}
+                    onChange={(event) => setSettlementAddress(event.target.value)}
+                    placeholder="0x..."
+                  />
+                </label>
+                <label>
+                  Intent Nonce
+                  <input
+                    value={liveIntentNonce}
+                    onChange={(event) => setLiveIntentNonce(Number(event.target.value || '0'))}
+                    type="number"
+                    min="1"
+                  />
+                </label>
+                <label>
+                  Expiry (sec from now)
+                  <input
+                    value={liveIntentExpirySec}
+                    onChange={(event) => setLiveIntentExpirySec(event.target.value)}
+                    type="number"
+                    min="60"
+                  />
+                </label>
+                <label>
+                  Max Input ETH
+                  <input
+                    value={liveMaxInputEth}
+                    onChange={(event) => setLiveMaxInputEth(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.001"
+                  />
+                </label>
+                <label>
+                  Min Output Tokens (18 decimals)
+                  <input
+                    value={liveMinOutputTokens}
+                    onChange={(event) => setLiveMinOutputTokens(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                  />
+                </label>
+                <label>
+                  Fill Input ETH
+                  <input
+                    value={liveFillInputEth}
+                    onChange={(event) => setLiveFillInputEth(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.001"
+                  />
+                </label>
+                <label>
+                  Fill Output Tokens (18 decimals)
+                  <input
+                    value={liveFillOutputTokens}
+                    onChange={(event) => setLiveFillOutputTokens(event.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                  />
+                </label>
+              </div>
+              <div className="demo-actions">
+                <button type="button" onClick={connectWallet} disabled={liveWorking}>
+                  {liveWorking ? 'Working...' : walletAddress ? 'Wallet Connected' : 'Connect Wallet'}
+                </button>
+                <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress}>
+                  {liveWorking ? 'Working...' : '1) Sign'}
+                </button>
+                <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress}>
+                  {liveWorking ? 'Working...' : '2) Lock'}
+                </button>
+                <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress}>
+                  {liveWorking ? 'Working...' : '3) Fill'}
+                </button>
+              </div>
+              <p className="field-help">
+                Recommended sequence: connect wallet -&gt; sign -&gt; lock -&gt; fill
+              </p>
+              {liveStatus ? <p className="muted">{liveStatus}</p> : null}
+              {liveTxHash ? (
+                <p className="muted">
+                  Tx:{' '}
+                  <a
+                    href={`https://sepolia.basescan.org/tx/${liveTxHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {liveTxHash}
+                  </a>
+                </p>
+              ) : null}
+            </article>
           </div>
-          <p className="muted">
-            Real testnet path: sign EIP-712 intent, lock ETH, then execute solver fill on settlement contract.
-          </p>
-          <div className="live-grid">
-            <label>
-              Settlement Contract
-              <input
-                value={settlementAddress}
-                onChange={(event) => setSettlementAddress(event.target.value)}
-                placeholder="0x..."
-              />
-            </label>
-            <label>
-              Intent Nonce
-              <input
-                value={liveIntentNonce}
-                onChange={(event) => setLiveIntentNonce(Number(event.target.value || '0'))}
-                type="number"
-                min="1"
-              />
-            </label>
-            <label>
-              Expiry (sec from now)
-              <input
-                value={liveIntentExpirySec}
-                onChange={(event) => setLiveIntentExpirySec(event.target.value)}
-                type="number"
-                min="60"
-              />
-            </label>
-            <label>
-              Max Input ETH
-              <input
-                value={liveMaxInputEth}
-                onChange={(event) => setLiveMaxInputEth(event.target.value)}
-                type="number"
-                min="0"
-                step="0.001"
-              />
-            </label>
-            <label>
-              Min Output Tokens (18 decimals)
-              <input
-                value={liveMinOutputTokens}
-                onChange={(event) => setLiveMinOutputTokens(event.target.value)}
-                type="number"
-                min="0"
-                step="0.0001"
-              />
-            </label>
-            <label>
-              Fill Input ETH
-              <input
-                value={liveFillInputEth}
-                onChange={(event) => setLiveFillInputEth(event.target.value)}
-                type="number"
-                min="0"
-                step="0.001"
-              />
-            </label>
-            <label>
-              Fill Output Tokens (18 decimals)
-              <input
-                value={liveFillOutputTokens}
-                onChange={(event) => setLiveFillOutputTokens(event.target.value)}
-                type="number"
-                min="0"
-                step="0.0001"
-              />
-            </label>
-          </div>
-          <div className="demo-actions">
-            <button type="button" onClick={connectWallet} disabled={liveWorking}>
-              {liveWorking ? 'Working...' : walletAddress ? 'Wallet Connected' : 'Connect Wallet'}
-            </button>
-            <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress}>
-              {liveWorking ? 'Working...' : '1) Sign Intent'}
-            </button>
-            <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress}>
-              {liveWorking ? 'Working...' : '2) Lock ETH'}
-            </button>
-            <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress}>
-              {liveWorking ? 'Working...' : '3) Fill Intent'}
-            </button>
-          </div>
-          <p className="field-help">
-            Use separate maker/solver wallets in practice. Solver wallet must approve tokenOut to settlement contract before fill.
-          </p>
           {intentSignature ? <p className="field-help">Signature captured: {intentSignature.slice(0, 20)}...</p> : null}
-          {liveStatus ? <p className="muted">{liveStatus}</p> : null}
-          {liveTxHash ? (
-            <p className="muted">
-              Tx:{' '}
-              <a
-                href={`https://sepolia.basescan.org/tx/${liveTxHash}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {liveTxHash}
-              </a>
-            </p>
-          ) : null}
-        </section>
-        <section className="panel mev-panel">
-          <div className="panel-head">
-            <h2>MEV Shield Execution Model</h2>
-            <span className="micro-tag">{mevShieldEnabled ? 'Shield ON' : 'Shield OFF'}</span>
+          <div className="live-proof">
+            <p className="nav-label">Verified Sepolia Example (what this proves)</p>
+            <ul className="live-explainers">
+              {LIVE_EXECUTION_EXPLAINERS.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <ul className="demo-routes">
+              {LIVE_DEMO_TXS.map((tx) => (
+                <li key={tx.hash}>
+                  <div>
+                    <strong>{tx.label}</strong>
+                    <p className="muted">{tx.amount} - {tx.note}</p>
+                    <p className="tx-hash">{tx.hash}</p>
+                  </div>
+                  <a
+                    href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View Tx
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <div className="live-lp-clarity">
+              <p><strong>LP usage in verified txs:</strong> 0 pools (funding + transfer proof only)</p>
+              <p><strong>LP usage in order simulation:</strong> 3 venues (Pool A / Pool B / Pool C route split)</p>
+            </div>
           </div>
-          <div className="mev-grid">
-            <div>
-              <p className="nav-label">Protection rails</p>
-              <ul className="mev-list">
-                <li><strong>Private relay:</strong> solver fills routed privately first</li>
-                <li><strong>Commit-reveal:</strong> commitment hash published, details revealed at settle stage</li>
-                <li><strong>Short-lived intent:</strong> nonce + expiry + domain-scoped payload</li>
-                <li><strong>On-chain guardrails:</strong> max input, min output, slippage bounds</li>
-                <li><strong>Randomized slicing:</strong> staged partial fills to reduce footprint</li>
-                <li><strong>Solver allowlist:</strong> only trusted solvers see full payload</li>
-                <li><strong>Batch window:</strong> short auction window before final selection</li>
-              </ul>
-            </div>
-            <div className="mev-snapshot">
-              <p className="nav-label">Latest intent snapshot</p>
-              <p><strong>Commitment</strong> {latestIntent?.mev?.commitmentHash ?? '--'}</p>
-              <p><strong>Nonce</strong> {latestIntent?.mev?.nonce ?? '--'}</p>
-              <p><strong>Expiry</strong> {latestIntent?.mev?.expirySec ? `${latestIntent.mev.expirySec}s` : '--'}</p>
-              <p><strong>Domain</strong> {latestIntent?.mev?.domain ?? '--'}</p>
-              <p><strong>Slices</strong> {latestIntent?.mev?.slices?.join(' / ') ?? '--'}</p>
-              <p>
-                <strong>Allowlisted solvers</strong>{' '}
-                {latestIntent?.mev?.allowlistedSolvers?.length ?? 0}
-              </p>
-              <p>
-                <strong>Batch window</strong>{' '}
-                {latestIntent?.mev?.batchWindowSec ? `${latestIntent.mev.batchWindowSec}s` : '--'}
-              </p>
-            </div>
+          <div className="mev-inline">
+            <p className="nav-label">MEV Shield rails</p>
+            <ul className="mev-list">
+              <li><strong>Private relay</strong></li>
+              <li><strong>Commit-reveal</strong></li>
+              <li><strong>Short-lived signed intents</strong></li>
+              <li><strong>Guardrails on settlement</strong></li>
+              <li><strong>Randomized slices</strong></li>
+              <li><strong>Solver allowlist</strong></li>
+              <li><strong>Batch auction window</strong></li>
+            </ul>
           </div>
         </section>
         <section className="visual-strip">
