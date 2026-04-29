@@ -13,6 +13,7 @@ const SAMPLE_SOLVERS = [
   '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',
   '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
   '0x66f820a414680b5bcda5eeca5dea238543f42054',
+  '0x28C6c06298d514Db089934071355E5743bf21d60',
 ]
 
 const STORAGE_KEY = 'silentsignal-intents-v1'
@@ -185,8 +186,13 @@ function App() {
       setLoading(true)
       setError('')
       const client = new GoldRushClient(apiKey)
+      const maker = latestIntent.makerWallet.toLowerCase()
+      const candidateSolvers = SAMPLE_SOLVERS.filter(
+        (solver) => solver.toLowerCase() !== maker,
+      )
+
       const matches = await Promise.all(
-        SAMPLE_SOLVERS.map(async (solver) => {
+        candidateSolvers.map(async (solver) => {
           const trust = await fetchWalletStrength(client, latestIntent.chainName, solver)
           const spreadBps = Math.max(5, 120 - trust)
           const matchScore = Math.max(
