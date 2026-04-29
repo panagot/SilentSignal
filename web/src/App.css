@@ -1,0 +1,288 @@
+.app-shell {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 24px 20px 56px;
+}
+
+.panel {
+  border: 1px solid #e4e9f2;
+  border-radius: 18px;
+  padding: 20px;
+  background: #ffffff;
+  display: grid;
+  gap: 12px;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.07);
+}
+
+.topbar {
+  background:
+    radial-gradient(circle at top left, rgba(130, 180, 255, 0.22), transparent 35%),
+    radial-gradient(circle at 85% 10%, rgba(123, 236, 196, 0.24), transparent 30%),
+    #ffffff;
+  border: 1px solid #dde5f1;
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.9rem;
+  color: #1a2a4a;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: 4px;
+  color: #516181;
+  font-size: 0.96rem;
+}
+
+.wallet-pill {
+  background: #ffffff;
+  color: #2a3956;
+  border: 1px solid #d8e1ef;
+  border-radius: 999px;
+  font-weight: 700;
+  padding: 10px 16px;
+  font-size: 0.92rem;
+}
+
+.module-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  background: #ffffff;
+  border: 1px solid #d7dfec;
+  color: #3f5276;
+  border-radius: 999px;
+  padding: 9px 15px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(13, 37, 62, 0.05);
+}
+
+.tab.active {
+  background: linear-gradient(135deg, #1463ff 0%, #05a7a2 100%);
+  color: #f7fbff;
+  border-color: #0d7ecf;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.controls h2,
+.hero-metric h2 {
+  margin: 0;
+  color: #1f2e4d;
+}
+
+.hero-metric {
+  align-content: center;
+}
+
+.hero-metric .label {
+  color: #61749b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+}
+
+.hero-metric .verdict {
+  font-weight: 700;
+  color: #0e8e67;
+  font-size: 1.1rem;
+}
+
+.muted {
+  color: #667a9f;
+  font-size: 0.92rem;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  color: #2d3f62;
+}
+
+input,
+select,
+button {
+  border-radius: 10px;
+  border: 1px solid #ccd7ea;
+  background: #f9fbff;
+  color: #22345a;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+button {
+  background: linear-gradient(135deg, #0f62fe 0%, #00a8a8 100%);
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  color: #f4fbff;
+}
+
+button:disabled {
+  opacity: 0.75;
+  cursor: progress;
+}
+
+.error {
+  margin-top: 4px;
+  color: #c53e56;
+}
+
+.stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.stat-card p {
+  margin: 0;
+  color: #6c7ea2;
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card h3 {
+  margin: 8px 0 0;
+  color: #162748;
+  font-size: 1.35rem;
+}
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.insights-grid h2 {
+  margin: 0;
+  color: #1f2e4d;
+  font-size: 1.15rem;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.micro-tag {
+  font-size: 0.78rem;
+  color: #16636a;
+  background: #e6fbf7;
+  border: 1px solid #b4ece1;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-weight: 700;
+}
+
+.reasons,
+.tx-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.intent-list {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.intent-list li {
+  border: 1px solid #e3eaf6;
+  border-radius: 12px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.intent-meta-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.status-chip {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+
+.status-chip.open {
+  background: #e8f2ff;
+  color: #2e5f8d;
+  border-color: #c7dbf4;
+}
+
+.status-chip.partial {
+  background: #fff5e6;
+  color: #97631f;
+  border-color: #f0d9ab;
+}
+
+.status-chip.executed {
+  background: #e6fbf4;
+  color: #15654c;
+  border-color: #bde8d8;
+}
+
+.tx-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e5ebf5;
+  padding: 8px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  color: #324870;
+  font-size: 0.84rem;
+}
+
+.placeholder-panel p {
+  margin: 0;
+  color: #5d7297;
+}
+
+.placeholder-panel ul {
+  margin: 6px 0 0;
+  color: #2f476f;
+}
+
+@media (max-width: 980px) {
+  .dashboard-grid,
+  .insights-grid,
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wallet-pill {
+    display: none;
+  }
+}
