@@ -220,6 +220,13 @@ function DistributionBars({ rows }) {
   )
 }
 
+function NavIcon({ type }) {
+  if (type === 'intent') return <span className="nav-icon">◉</span>
+  if (type === 'solver') return <span className="nav-icon">◇</span>
+  if (type === 'flow') return <span className="nav-icon">↝</span>
+  return <span className="nav-icon">▣</span>
+}
+
 function SilentSignalLogo() {
   return (
     <svg className="ss-logo" viewBox="0 0 64 64" aria-label="SilentSignal logo">
@@ -516,6 +523,7 @@ function App() {
                 className={activeView === view.id ? 'nav-link-btn active' : 'nav-link-btn'}
                 onClick={() => setActiveView(view.id)}
               >
+                <NavIcon type={view.id} />
                 {view.label}
               </button>
             ))}
@@ -534,10 +542,10 @@ function App() {
 
         <nav className="sidebar-nav">
           <p className="nav-label">Workspace</p>
-          <button type="button" className={activeView === 'intent' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('intent')}>Intent Desk</button>
-          <button type="button" className={activeView === 'solver' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('solver')}>Solver Engine</button>
-          <button type="button" className={activeView === 'flow' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('flow')}>Execution Flow</button>
-          <button type="button" className={activeView === 'analytics' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('analytics')}>Analytics</button>
+          <button type="button" className={activeView === 'intent' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('intent')}><NavIcon type="intent" />Intent Desk</button>
+          <button type="button" className={activeView === 'solver' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('solver')}><NavIcon type="solver" />Solver Engine</button>
+          <button type="button" className={activeView === 'flow' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('flow')}><NavIcon type="flow" />Execution Flow</button>
+          <button type="button" className={activeView === 'analytics' ? 'nav-item active' : 'nav-item'} onClick={() => setActiveView('analytics')}><NavIcon type="analytics" />Analytics</button>
         </nav>
 
         <section className="sidebar-card">
@@ -580,83 +588,6 @@ function App() {
           </div>
           <div className="wallet-pill">x402-ready architecture</div>
         </header>
-
-        <section className="visual-strip">
-          <article className="panel hero-visual">
-            <div>
-              <p className="eyebrow">Stealth Liquidity Map</p>
-              <h3>Anonymous order flow, rendered as live signal lanes</h3>
-              <p className="muted">
-                Intent publication, solver scoring, and staged execution are separated into
-                observable control layers.
-              </p>
-            </div>
-            <SignalArtwork />
-          </article>
-          <article className="panel metric-stack">
-            <div>
-              <p className="eyebrow">Intent Health</p>
-              <h3>{openIntentsCount}/{Math.max(1, intents.length)} open</h3>
-              <p className="muted">Open intent pressure in current session.</p>
-            </div>
-            <div className="meter">
-              <span style={{ width: `${Math.max(8, Math.min(100, openIntentsCount * 20))}%` }} />
-            </div>
-            <div>
-              <p className="eyebrow">Execution Yield</p>
-              <h3>{fillRate}%</h3>
-              <p className="muted">Latest intent fill completion ratio.</p>
-            </div>
-          </article>
-        </section>
-
-        <section className="infographics-grid">
-          <article className="panel">
-            <div className="panel-head">
-              <h2>Execution Completion</h2>
-              <span className="micro-tag">Live</span>
-            </div>
-            <div className="donut-wrap">
-              <DonutChart value={fillRate} />
-              <div>
-                <p className="muted">Based on latest intent lifecycle progression.</p>
-                <p className="muted">Higher values indicate faster solver settlement.</p>
-              </div>
-            </div>
-          </article>
-          <article className="panel">
-            <div className="panel-head">
-              <h2>Status Distribution</h2>
-              <span className="micro-tag">Session</span>
-            </div>
-            <DistributionBars rows={statusDistribution} />
-          </article>
-          <article className="panel">
-            <div className="panel-head">
-              <h2>Chain Activity</h2>
-              <span className="micro-tag">Heat</span>
-            </div>
-            <DistributionBars
-              rows={
-                chainDistribution.length > 0
-                  ? chainDistribution
-                  : [{ label: 'eth', value: 0 }, { label: 'base', value: 0 }, { label: 'polygon', value: 0 }]
-              }
-            />
-          </article>
-          <article className="panel timeline-panel">
-            <div className="panel-head">
-              <h2>Intent Lifecycle Timeline</h2>
-              <span className="micro-tag">Flow</span>
-            </div>
-            <div className="timeline">
-              <div><span />Intent Published</div>
-              <div><span />Anonymous Broadcast</div>
-              <div><span />Solver Discovery</div>
-              <div><span />Partial/Full Settlement</div>
-            </div>
-          </article>
-        </section>
 
         {activeView === 'intent' ? (
         <>
@@ -799,6 +730,98 @@ function App() {
               }
             />
           </section>
+        </section>
+        <section className="visual-strip">
+          <article className="panel hero-visual">
+            <div>
+              <p className="eyebrow">Stealth Liquidity Map</p>
+              <h3>Anonymous order flow, rendered as live signal lanes</h3>
+              <p className="muted">
+                Intent publication, solver scoring, and staged execution are separated into
+                observable control layers.
+              </p>
+            </div>
+            <SignalArtwork />
+          </article>
+          <article className="panel metric-stack">
+            <div>
+              <p className="eyebrow">Intent Health</p>
+              <h3>{openIntentsCount}/{Math.max(1, intents.length)} open</h3>
+              <p className="muted">Open intent pressure in current session.</p>
+            </div>
+            <div className="meter">
+              <span style={{ width: `${Math.max(8, Math.min(100, openIntentsCount * 20))}%` }} />
+            </div>
+            <div>
+              <p className="eyebrow">Execution Yield</p>
+              <h3>{fillRate}%</h3>
+              <p className="muted">Latest intent fill completion ratio.</p>
+            </div>
+          </article>
+        </section>
+        <section className="kpi-banner">
+          <article className="kpi-item">
+            <p>Intent Throughput</p>
+            <h4>{intents.length * 7 + openIntentsCount}</h4>
+            <span>simulated ops/hour</span>
+          </article>
+          <article className="kpi-item">
+            <p>Solver Readiness</p>
+            <h4>{solverMatches[0]?.matchScore ?? 0}%</h4>
+            <span>best candidate confidence</span>
+          </article>
+          <article className="kpi-item">
+            <p>Stealth Integrity</p>
+            <h4>{Math.max(72, 100 - fillRate / 2)}%</h4>
+            <span>privacy posture index</span>
+          </article>
+        </section>
+        <section className="infographics-grid">
+          <article className="panel">
+            <div className="panel-head">
+              <h2>Execution Completion</h2>
+              <span className="micro-tag">Live</span>
+            </div>
+            <div className="donut-wrap">
+              <DonutChart value={fillRate} />
+              <div>
+                <p className="muted">Based on latest intent lifecycle progression.</p>
+                <p className="muted">Higher values indicate faster solver settlement.</p>
+              </div>
+            </div>
+          </article>
+          <article className="panel">
+            <div className="panel-head">
+              <h2>Status Distribution</h2>
+              <span className="micro-tag">Session</span>
+            </div>
+            <DistributionBars rows={statusDistribution} />
+          </article>
+          <article className="panel">
+            <div className="panel-head">
+              <h2>Chain Activity</h2>
+              <span className="micro-tag">Heat</span>
+            </div>
+            <DistributionBars
+              rows={
+                chainDistribution.length > 0
+                  ? chainDistribution
+                  : [{ label: 'eth', value: 0 }, { label: 'base', value: 0 }, { label: 'polygon', value: 0 }]
+              }
+            />
+          </article>
+          <article className="panel timeline-panel">
+            <div className="panel-head">
+              <h2>Intent Lifecycle Timeline</h2>
+              <span className="micro-tag">Flow</span>
+            </div>
+            <div className="timeline">
+              <div><span />Intent Published</div>
+              <div><span />Anonymous Broadcast</div>
+              <div><span />Solver Discovery</div>
+              <div><span />Partial/Full Settlement</div>
+            </div>
+          </article>
         </section>
         <section className="panel compact-panel">
           <div className="panel-head">
