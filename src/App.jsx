@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GoldRushClient } from '@covalenthq/client-sdk'
+import { BrowserProvider, Contract, parseEther, parseUnits } from 'ethers'
 import './App.css'
+import {
+  BASE_SEPOLIA_CHAIN_ID,
+  DEFAULT_SETTLEMENT_ADDRESS,
+  INTENT_SETTLEMENT_ABI,
+} from './liveExecution'
 
 const CHAIN_OPTIONS = [
   { label: 'Ethereum Mainnet', value: 'eth-mainnet' },
@@ -354,6 +360,18 @@ function App() {
   const [demoError, setDemoError] = useState('')
   const [mevShieldEnabled, setMevShieldEnabled] = useState(true)
   const mevPolicy = useMemo(() => buildMevPolicy(mevShieldEnabled), [mevShieldEnabled])
+  const [walletAddress, setWalletAddress] = useState('')
+  const [liveStatus, setLiveStatus] = useState('')
+  const [liveTxHash, setLiveTxHash] = useState('')
+  const [intentSignature, setIntentSignature] = useState('')
+  const [settlementAddress, setSettlementAddress] = useState(DEFAULT_SETTLEMENT_ADDRESS)
+  const [liveIntentNonce, setLiveIntentNonce] = useState(() => Math.floor(Date.now() / 1000))
+  const [liveIntentExpirySec, setLiveIntentExpirySec] = useState('300')
+  const [liveMaxInputEth, setLiveMaxInputEth] = useState('0.01')
+  const [liveMinOutputTokens, setLiveMinOutputTokens] = useState('1')
+  const [liveFillInputEth, setLiveFillInputEth] = useState('0.01')
+  const [liveFillOutputTokens, setLiveFillOutputTokens] = useState('1')
+  const [liveWorking, setLiveWorking] = useState(false)
 
   const apiKey = import.meta.env.VITE_GOLDRUSH_API_KEY
   const latestIntent = useMemo(() => intents[0] ?? null, [intents])
@@ -702,6 +720,12 @@ function App() {
             'Best quote selected directly',
             'Settlement simulated with standard guardrails',
           ]
+      const routeWeights = createRandomizedSlices(100, 3).map((n) => Number(n.toFixed(2)))
+      const routeBreakdown = [
+        { venue: 'Pool A (Uniswap V3)', pct: routeWeights[0] ?? 0 },
+        { venue: 'Pool B (Uniswap V2)', pct: routeWeights[1] ?? 0 },
+        { venue: 'Pool C (RFQ/MM)', pct: routeWeights[2] ?? 0 },
+      ]
 
       setDemoResult({
         mode,
@@ -716,11 +740,142 @@ function App() {
         settlementGuardrails,
         simulationSteps,
         mevShieldEnabled,
+        routeBreakdown,
       })
     } catch (err) {
       setDemoError(err?.message ?? 'Failed to run 1 ETH simulation.')
     } finally {
       setDemoLoading(false)
+    }
+  }
+
+  const requireWallet = async () => {
+    if (!window.ethereum) {
+      throw new Error('No injected wallet found. Install MetaMask or Rabby.')
+    }
+    const provider = new BrowserProvider(window.ethereum)
+    const signer = await provider.getSigner()
+    const network = await provider.getNetwork()
+    if (Number(network.chainId) !== BASE_SEPOLIA_CHAIN_ID) {
+      throw new Error('Switch wallet to Base Sepolia (chainId 84532) for live execution.')
+    }
+    return { provider, signer }
+  }
+
+  const connectWallet = async () => {
+    try {
+      setLiveWorking(true)
+      setLiveStatus('')
+      const { signer } = await requireWallet()
+      const address = await signer.getAddress()
+      setWalletAddress(address)
+      setLiveStatus(`Connected ${shortAddress(address)} on Base Sepolia`)
+    } catch (err) {
+      setLiveStatus(err?.message ?? 'Wallet connection failed.')
+    } finally {
+      setLiveWorking(false)
+    }
+  }
+
+  const buildLiveIntentPayload = () => {
+    if (!walletAddress) throw new Error('Connect wallet first.')
+    if (!isLikelyEvmAddress(tokenAddress)) throw new Error('Set a valid token contract for tokenOut.')
+    if (!isLikelyEvmAddress(settlementAddress)) throw new Error('Set valid settlement contract address.')
+
+    const expiry = Math.floor(Date.now() / 1000) + Number(liveIntentExpirySec || '300')
+    if (expiry <= Math.floor(Date.now() / 1000)) throw new Error('Expiry must be in the future.')
+
+    return {
+      maker: walletAddress,
+      tokenOut: tokenAddress,
+      maxInputWei: parseEther(liveMaxInputEth || '0').toString(),
+      minOutputTokens: parseUnits(liveMinOutputTokens || '0', 18).toString(),
+      expiry: expiry.toString(),
+      nonce: String(liveIntentNonce),
+      allowPartial: true,
+    }
+  }
+
+  const signLiveIntent = async () => {
+    try {
+      setLiveWorking(true)
+      setLiveStatus('')
+      setLiveTxHash('')
+      const { signer } = await requireWallet()
+      const address = await signer.getAddress()
+      setWalletAddress(address)
+      const intent = buildLiveIntentPayload()
+      const domain = {
+        name: 'SilentSignalIntent',
+        version: '1',
+        chainId: BASE_SEPOLIA_CHAIN_ID,
+        verifyingContract: settlementAddress,
+      }
+      const types = {
+        Intent: [
+          { name: 'maker', type: 'address' },
+          { name: 'tokenOut', type: 'address' },
+          { name: 'maxInputWei', type: 'uint256' },
+          { name: 'minOutputTokens', type: 'uint256' },
+          { name: 'expiry', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'allowPartial', type: 'bool' },
+        ],
+      }
+      const signature = await signer.signTypedData(domain, types, intent)
+      setIntentSignature(signature)
+      setLiveStatus('Intent signed. Next: lock ETH into settlement contract.')
+    } catch (err) {
+      setLiveStatus(err?.message ?? 'Intent signing failed.')
+    } finally {
+      setLiveWorking(false)
+    }
+  }
+
+  const lockLiveIntent = async () => {
+    try {
+      setLiveWorking(true)
+      setLiveStatus('')
+      setLiveTxHash('')
+      const { signer } = await requireWallet()
+      const intent = buildLiveIntentPayload()
+      const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
+      const intentHash = await contract.hashIntentStruct(intent)
+      const tx = await contract.lockIntent(intentHash, intent.nonce, intent.expiry, {
+        value: parseEther(liveMaxInputEth || '0'),
+      })
+      await tx.wait()
+      setLiveTxHash(tx.hash)
+      setLiveStatus('ETH locked on-chain. Solver can now fill intent.')
+    } catch (err) {
+      setLiveStatus(err?.message ?? 'Lock transaction failed.')
+    } finally {
+      setLiveWorking(false)
+    }
+  }
+
+  const fillLiveIntent = async () => {
+    try {
+      if (!intentSignature) throw new Error('Sign intent first before filling.')
+      setLiveWorking(true)
+      setLiveStatus('')
+      setLiveTxHash('')
+      const { signer } = await requireWallet()
+      const intent = buildLiveIntentPayload()
+      const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
+      const tx = await contract.fillIntent(
+        intent,
+        parseEther(liveFillInputEth || '0').toString(),
+        parseUnits(liveFillOutputTokens || '0', 18).toString(),
+        intentSignature,
+      )
+      await tx.wait()
+      setLiveTxHash(tx.hash)
+      setLiveStatus('Intent fill executed on-chain.')
+    } catch (err) {
+      setLiveStatus(err?.message ?? 'Fill transaction failed.')
+    } finally {
+      setLiveWorking(false)
     }
   }
 
@@ -791,6 +946,10 @@ function App() {
             <p className="eyebrow">SilentSignal Control Surface</p>
             <h2 className="page-title">{viewMeta.title}</h2>
             <p className="subtitle">{viewMeta.subtitle}</p>
+            <p className="value-prop">
+              Core proposition: solvers split flow across multiple LP venues, then merge outcomes
+              into best-execution settlement.
+            </p>
           </div>
           <div className="topbar-metrics">
             <div className="topbar-metric">
@@ -1022,12 +1181,129 @@ function App() {
                     <li key={step}>{step}</li>
                   ))}
                 </ul>
+                <p className="nav-label demo-steps-label">Liquidity route split</p>
+                <ul className="demo-routes">
+                  {demoResult.routeBreakdown.map((route) => (
+                    <li key={route.venue}>
+                      <span>{route.venue}</span>
+                      <strong>{route.pct}%</strong>
+                    </li>
+                  ))}
+                </ul>
                 <p className="field-help">
                   This is a controlled simulation of solver competition with enforced limits, not direct solver custody.
                 </p>
               </div>
             </div>
           )}
+        </section>
+        <section className="panel live-panel">
+          <div className="panel-head">
+            <h2>Live Execution (Base Sepolia)</h2>
+            <span className="micro-tag">On-chain</span>
+          </div>
+          <p className="muted">
+            Real testnet path: sign EIP-712 intent, lock ETH, then execute solver fill on settlement contract.
+          </p>
+          <div className="live-grid">
+            <label>
+              Settlement Contract
+              <input
+                value={settlementAddress}
+                onChange={(event) => setSettlementAddress(event.target.value)}
+                placeholder="0x..."
+              />
+            </label>
+            <label>
+              Intent Nonce
+              <input
+                value={liveIntentNonce}
+                onChange={(event) => setLiveIntentNonce(Number(event.target.value || '0'))}
+                type="number"
+                min="1"
+              />
+            </label>
+            <label>
+              Expiry (sec from now)
+              <input
+                value={liveIntentExpirySec}
+                onChange={(event) => setLiveIntentExpirySec(event.target.value)}
+                type="number"
+                min="60"
+              />
+            </label>
+            <label>
+              Max Input ETH
+              <input
+                value={liveMaxInputEth}
+                onChange={(event) => setLiveMaxInputEth(event.target.value)}
+                type="number"
+                min="0"
+                step="0.001"
+              />
+            </label>
+            <label>
+              Min Output Tokens (18 decimals)
+              <input
+                value={liveMinOutputTokens}
+                onChange={(event) => setLiveMinOutputTokens(event.target.value)}
+                type="number"
+                min="0"
+                step="0.0001"
+              />
+            </label>
+            <label>
+              Fill Input ETH
+              <input
+                value={liveFillInputEth}
+                onChange={(event) => setLiveFillInputEth(event.target.value)}
+                type="number"
+                min="0"
+                step="0.001"
+              />
+            </label>
+            <label>
+              Fill Output Tokens (18 decimals)
+              <input
+                value={liveFillOutputTokens}
+                onChange={(event) => setLiveFillOutputTokens(event.target.value)}
+                type="number"
+                min="0"
+                step="0.0001"
+              />
+            </label>
+          </div>
+          <div className="demo-actions">
+            <button type="button" onClick={connectWallet} disabled={liveWorking}>
+              {liveWorking ? 'Working...' : walletAddress ? 'Wallet Connected' : 'Connect Wallet'}
+            </button>
+            <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress}>
+              {liveWorking ? 'Working...' : '1) Sign Intent'}
+            </button>
+            <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress}>
+              {liveWorking ? 'Working...' : '2) Lock ETH'}
+            </button>
+            <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress}>
+              {liveWorking ? 'Working...' : '3) Fill Intent'}
+            </button>
+          </div>
+          <p className="field-help">
+            Use separate maker/solver wallets in practice. Solver wallet must approve tokenOut to settlement contract before fill.
+          </p>
+          {intentSignature ? <p className="field-help">Signature captured: {intentSignature.slice(0, 20)}...</p> : null}
+          {liveStatus ? <p className="muted">{liveStatus}</p> : null}
+          {liveTxHash ? (
+            <p className="muted">
+              Tx:{' '}
+              <a
+                href={`https://sepolia.basescan.org/tx/${liveTxHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {liveTxHash}
+              </a>
+            </p>
+          ) : null}
         </section>
         <section className="panel mev-panel">
           <div className="panel-head">

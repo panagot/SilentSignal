@@ -1,10 +1,14 @@
 apikey
 .env.local
+.env
 
 # Dependencies / build
 node_modules
 dist
 dist-ssr
+artifacts
+cache
+test-reports
 
 # Logs
 logs

@@ -1,16 +1,46 @@
-# React + Vite
+# SilentSignal
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+SilentSignal is an intent-based execution demo that combines:
 
-Currently, two official plugins are available:
+- GoldRush market + wallet data
+- solver simulation and trust scoring
+- MEV-shield concept modeling
+- optional live execution path on Base Sepolia
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## App Commands
 
-## React Compiler
+- `npm run dev` - start local UI
+- `npm run lint` - run lint checks
+- `npm run build` - production build
+- `npm run test:intentflow` - buy/sell intent flow validation
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Live Execution (Base Sepolia)
 
-## Expanding the ESLint configuration
+The app includes a `Live Execution (Base Sepolia)` panel for:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. connecting wallet
+2. signing EIP-712 intent
+3. locking ETH on settlement contract
+4. filling the intent on-chain
+
+### Environment
+
+Copy `.env.example` and fill values:
+
+- `VITE_GOLDRUSH_API_KEY`
+- `VITE_SETTLEMENT_CONTRACT_ADDRESS` (after deployment)
+- `BASE_SEPOLIA_RPC_URL`
+- `DEPLOYER_PRIVATE_KEY`
+
+## Settlement Contract
+
+Compile:
+
+- `npm run contracts:compile`
+
+Deploy to Base Sepolia:
+
+- `npm run contracts:deploy:base-sepolia`
+
+The deploy command prints the settlement contract address. Add that to
+`VITE_SETTLEMENT_CONTRACT_ADDRESS` for frontend usage.
