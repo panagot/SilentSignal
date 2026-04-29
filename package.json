@@ -7,7 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:price": "node scripts/test-price.js",
+    "test:marketcap": "node scripts/test-marketcap.js",
+    "test:full": "node scripts/test-full.js",
+    "test:batch": "node scripts/test-batch.js",
+    "test:batch:csv": "node scripts/test-batch.js --csv"
   },
   "dependencies": {
     "@covalenthq/client-sdk": "^3.0.6",
