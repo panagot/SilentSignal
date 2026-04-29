@@ -14,6 +14,7 @@
     "test:batch": "node scripts/test-batch.js",
     "test:batch:csv": "node scripts/test-batch.js --csv",
     "test:intentflow": "node scripts/test-intent-flow.js",
+    "test:sepolia:tx": "node scripts/test-sepolia-tx.js",
     "contracts:compile": "hardhat compile --config hardhat.config.cjs",
     "contracts:deploy:base-sepolia": "node scripts/deploy-settlement.js"
   },
