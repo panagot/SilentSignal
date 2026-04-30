@@ -488,52 +488,6 @@
   gap: 12px;
 }
 
-.flow-stepper {
-  padding: 14px 16px;
-  gap: 10px;
-}
-
-.stepper-row {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.stepper-item {
-  border: 1px solid var(--border-soft);
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.stepper-item span {
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  display: inline-grid;
-  place-items: center;
-  font-size: 0.74rem;
-  font-weight: 800;
-  color: #0f766e;
-  background: #ecfeff;
-  border: 1px solid #99f6e4;
-  flex-shrink: 0;
-}
-
-.stepper-item p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.stepper-item.active {
-  border-color: #99f6e4;
-  background: #f0fdfa;
-}
 
 .kpi-item {
   border: 1px solid var(--border-soft);
@@ -1514,7 +1468,6 @@ button:focus-visible,
   .visual-strip,
   .infographics-grid,
   .kpi-banner,
-  .stepper-row,
   .execution-columns,
   .check-list,
   .demo-grid,

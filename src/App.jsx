@@ -1260,18 +1260,6 @@ function App() {
         </header>
         {activeView === 'intent' ? (
         <>
-        <section className="panel flow-stepper">
-          <div className="stepper-row">
-            <div className="stepper-item active"><span>1</span><p>Define Intent</p></div>
-            <div className="stepper-item"><span>2</span><p>Sign</p></div>
-            <div className="stepper-item"><span>3</span><p>Lock</p></div>
-            <div className="stepper-item"><span>4</span><p>Approve</p></div>
-            <div className="stepper-item"><span>5</span><p>Fill</p></div>
-          </div>
-          <p className="field-help">
-            Step 1 creates the intent draft. Steps 2-5 run real wallet transactions on Ethereum Sepolia.
-          </p>
-        </section>
         <section id="intent-desk" className="dashboard-grid">
           <form className="panel controls" onSubmit={handleCreateIntent}>
           <h2>
