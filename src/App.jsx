@@ -105,21 +105,6 @@ const LIVE_EXECUTION_EXPLAINERS = [
   'LP routing is demonstrated in simulation mode (Pool A/B/C split), not in these proof txs.',
   'Live settlement contract flow is available in the panel above (Sign -&gt; Lock -&gt; Fill).',
 ]
-const PRODUCT_PILLARS = [
-  {
-    title: 'Intent Abstraction',
-    text: 'Traders describe outcomes and constraints, not one fixed route.',
-  },
-  {
-    title: 'Solver Competition',
-    text: 'Execution agents compete to deliver the best fill quality.',
-  },
-  {
-    title: 'Stealth Controls',
-    text: 'MEV-shield rails reduce pre-trade information leakage.',
-  },
-]
-
 function buildMevPolicy(enabled) {
   if (enabled) return { ...DEFAULT_MEV_POLICY }
   return {
@@ -1043,21 +1028,15 @@ function App() {
           </div>
           <div className="wallet-pill">x402-ready architecture</div>
         </header>
-        <section className="pillars-row">
-          {PRODUCT_PILLARS.map((pillar) => (
-            <article key={pillar.title} className="pillar-card">
-              <p className="nav-label">{pillar.title}</p>
-              <p>{pillar.text}</p>
-            </article>
-          ))}
-        </section>
-
         {activeView === 'intent' ? (
         <>
         <section id="intent-desk" className="dashboard-grid">
           <form className="panel controls" onSubmit={handleCreateIntent}>
           <h2>
-            Create Stealth Intent <InfoTip text="Intent is anonymized first, then solver discovery runs without revealing full maker profile." />
+            <span className="label-head">
+              Create Stealth Intent
+              <InfoTip text="Intent is anonymized first, then solver discovery runs without revealing full maker profile." />
+            </span>
           </h2>
           <div className="preset-row">
             {CA_PRESETS.map((preset) => (
@@ -1075,7 +1054,10 @@ function App() {
             ))}
           </div>
           <label>
-            Chain <InfoTip text="Execution chain used for pricing lookup and solver trust scoring." />
+            <span className="label-head">
+              Chain
+              <InfoTip text="Execution chain used for pricing lookup and solver trust scoring." />
+            </span>
             <select
               value={chainName}
               onChange={(event) => setChainName(event.target.value)}
@@ -1090,7 +1072,10 @@ function App() {
           <p className="field-help">Used for market data resolution and candidate solver profiling.</p>
 
           <label>
-            Intent Type <InfoTip text="Choose whether you are quietly buying or selling." />
+            <span className="label-head">
+              Intent Type
+              <InfoTip text="Choose whether you are quietly buying or selling." />
+            </span>
             <select
               value={intentType}
               onChange={(event) => setIntentType(event.target.value)}
@@ -1102,7 +1087,10 @@ function App() {
           <p className="field-help">Stealth buy/sell intent is shown in feed under anonymous alias.</p>
 
           <label>
-            Token Contract <InfoTip text="Token address used to fetch live market price context from GoldRush." />
+            <span className="label-head">
+              Token Contract
+              <InfoTip text="Token address used to fetch live market price context from GoldRush." />
+            </span>
             <input
               value={tokenAddress}
               onChange={(event) => setTokenAddress(event.target.value)}
@@ -1114,7 +1102,10 @@ function App() {
 
           <div className="field-row">
             <label>
-              Amount <InfoTip text="Target amount to execute across one or more solver fills." />
+              <span className="label-head">
+                Amount
+                <InfoTip text="Target amount to execute across one or more solver fills." />
+              </span>
               <input
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
@@ -1127,7 +1118,10 @@ function App() {
             </label>
 
             <label>
-              Max Slippage % <InfoTip text="Maximum acceptable execution drift from reference price." />
+              <span className="label-head">
+                Max Slippage %
+                <InfoTip text="Maximum acceptable execution drift from reference price." />
+              </span>
               <input
                 value={maxSlippage}
                 onChange={(event) => setMaxSlippage(event.target.value)}
@@ -1140,7 +1134,10 @@ function App() {
           </div>
 
           <label>
-            Maker Wallet (private profile) <InfoTip text="Used only for trust scoring; UI shows an anonymous alias in feed." />
+            <span className="label-head">
+              Maker Wallet (private profile)
+              <InfoTip text="Used only for trust scoring; UI shows an anonymous alias in feed." />
+            </span>
             <input
               value={makerWallet}
               onChange={(event) => setMakerWallet(event.target.value)}
