@@ -55,6 +55,26 @@
   gap: 14px;
 }
 
+.nav-actions {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+
+.nav-actions-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-wallet-status {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #4f678d;
+  max-width: 380px;
+  text-align: right;
+}
+
 .nav-brand {
   display: flex;
   align-items: center;
@@ -379,6 +399,40 @@
   font-weight: 700;
   padding: 10px 16px;
   font-size: 0.84rem;
+}
+
+.topbar-wallet {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+}
+
+.wallet-action-btn {
+  border: 1px solid #c5d9f5;
+  background: #f7fbff;
+  color: #2f5385;
+  padding: 8px 13px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(19, 56, 99, 0.08);
+}
+
+.wallet-action-btn:hover {
+  background: #e8f1ff;
+  border-color: #a9c8ee;
+}
+
+.wallet-action-btn.disconnect {
+  border-color: #f0c9d1;
+  background: #fff3f5;
+  color: #9a3b50;
+}
+
+.wallet-action-btn.disconnect:hover {
+  background: #ffe9ed;
+  border-color: #e6a7b4;
 }
 
 .dashboard-grid {

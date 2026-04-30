@@ -4,11 +4,15 @@ import { config as loadEnv } from 'dotenv'
 import { ContractFactory, JsonRpcProvider, Wallet } from 'ethers'
 
 async function main() {
+  loadEnv({ path: '.env.local', override: false })
   loadEnv()
-  const rpcUrl = process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org'
-  const privateKey = process.env.DEPLOYER_PRIVATE_KEY
+  const rpcUrl =
+    process.env.SEPOLIA_RPC_URL ||
+    process.env.BASE_SEPOLIA_RPC_URL ||
+    'https://ethereum-sepolia-rpc.publicnode.com'
+  const privateKey = process.env.DEPLOYER_PRIVATE_KEY || process.env.TEST_SENDER_PRIVATE_KEY
   if (!privateKey) {
-    throw new Error('Missing DEPLOYER_PRIVATE_KEY in environment.')
+    throw new Error('Missing DEPLOYER_PRIVATE_KEY (or TEST_SENDER_PRIVATE_KEY) in environment.')
   }
 
   const artifactPath = path.resolve(

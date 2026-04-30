@@ -3,7 +3,7 @@ import { GoldRushClient } from '@covalenthq/client-sdk'
 import { BrowserProvider, Contract, formatEther, parseEther, parseUnits } from 'ethers'
 import './App.css'
 import {
-  BASE_SEPOLIA_CHAIN_ID,
+  ETH_SEPOLIA_CHAIN_ID,
   DEFAULT_SETTLEMENT_ADDRESS,
   INTENT_SETTLEMENT_ABI,
 } from './liveExecution'
@@ -105,6 +105,24 @@ const LIVE_EXECUTION_EXPLAINERS = [
   'LP routing is demonstrated in simulation mode (Pool A/B/C split), not in these proof txs.',
   'Live settlement contract flow is available in the panel above (Sign -&gt; Lock -&gt; Fill).',
 ]
+const ETH_SEPOLIA_HEX_CHAIN_ID = '0xaa36a7'
+const ETH_SEPOLIA_NETWORK_PARAMS = {
+  chainId: ETH_SEPOLIA_HEX_CHAIN_ID,
+  chainName: 'Ethereum Sepolia',
+  nativeCurrency: {
+    name: 'Ethereum',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: ['https://rpc.sepolia.org'],
+  blockExplorerUrls: ['https://sepolia.etherscan.io'],
+}
+const ERC20_READ_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+  'function approve(address spender, uint256 value) returns (bool)',
+]
 function buildMevPolicy(enabled) {
   if (enabled) return { ...DEFAULT_MEV_POLICY }
   return {
@@ -146,6 +164,10 @@ function formatCompactCurrency(value) {
 function shortAddress(address) {
   if (!address) return 'anonymous'
   return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+function sameAddress(a, b) {
+  return String(a || '').toLowerCase() === String(b || '').toLowerCase()
 }
 
 function deterministicTrustFromAddress(address) {
@@ -385,16 +407,22 @@ function App() {
   const [mevShieldEnabled, setMevShieldEnabled] = useState(true)
   const mevPolicy = useMemo(() => buildMevPolicy(mevShieldEnabled), [mevShieldEnabled])
   const [walletAddress, setWalletAddress] = useState('')
+  const [walletUiStatus, setWalletUiStatus] = useState('')
   const [liveStatus, setLiveStatus] = useState('')
   const [liveTxHash, setLiveTxHash] = useState('')
   const [intentSignature, setIntentSignature] = useState('')
+  const [liveSignedIntentPayload, setLiveSignedIntentPayload] = useState(null)
+  const [liveMakerAddress, setLiveMakerAddress] = useState('')
   const [settlementAddress, setSettlementAddress] = useState(DEFAULT_SETTLEMENT_ADDRESS)
+  const [liveTokenOut, setLiveTokenOut] = useState('0x1c7d4b196cb0c7b01d743fbc6116a902379c7238')
   const [liveIntentNonce, setLiveIntentNonce] = useState(() => Math.floor(Date.now() / 1000))
   const [liveIntentExpirySec, setLiveIntentExpirySec] = useState('300')
   const [liveMaxInputEth, setLiveMaxInputEth] = useState('0.01')
   const [liveMinOutputTokens, setLiveMinOutputTokens] = useState('1')
   const [liveFillInputEth, setLiveFillInputEth] = useState('0.01')
   const [liveFillOutputTokens, setLiveFillOutputTokens] = useState('1')
+  const [liveTokenDecimals, setLiveTokenDecimals] = useState(18)
+  const [liveAllowSelfFill, setLiveAllowSelfFill] = useState(true)
   const [liveWorking, setLiveWorking] = useState(false)
   const [walletChainId, setWalletChainId] = useState(null)
   const [walletEthBalance, setWalletEthBalance] = useState('')
@@ -779,12 +807,49 @@ function App() {
     if (!window.ethereum) {
       throw new Error('No injected wallet found. Install MetaMask or Rabby.')
     }
+
+    await window.ethereum.request({ method: 'eth_requestAccounts' })
+    const getChainIdHex = async () => {
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' })
+      return String(chainId).toLowerCase()
+    }
+
+    let currentChainIdHex = await getChainIdHex()
+    if (currentChainIdHex !== ETH_SEPOLIA_HEX_CHAIN_ID) {
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: ETH_SEPOLIA_HEX_CHAIN_ID }],
+        })
+      } catch (switchError) {
+        if (switchError?.code === 4902) {
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [ETH_SEPOLIA_NETWORK_PARAMS],
+          })
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: ETH_SEPOLIA_HEX_CHAIN_ID }],
+          })
+        } else {
+          throw new Error('Please approve wallet network switch to Ethereum Sepolia.', {
+            cause: switchError,
+          })
+        }
+      }
+      currentChainIdHex = await getChainIdHex()
+      if (currentChainIdHex !== ETH_SEPOLIA_HEX_CHAIN_ID) {
+        throw new Error('Switch wallet to Ethereum Sepolia (chainId 11155111) for live execution.')
+      }
+    }
+
     const provider = new BrowserProvider(window.ethereum)
     const signer = await provider.getSigner()
     const network = await provider.getNetwork()
-    if (Number(network.chainId) !== BASE_SEPOLIA_CHAIN_ID) {
-      throw new Error('Switch wallet to Base Sepolia (chainId 84532) for live execution.')
+    if (Number(network.chainId) !== ETH_SEPOLIA_CHAIN_ID) {
+      throw new Error('Wallet chain mismatch after switch. Please retry connect.')
     }
+
     return { provider, signer }
   }
 
@@ -792,6 +857,7 @@ function App() {
     try {
       setLiveWorking(true)
       setLiveStatus('')
+      setWalletUiStatus('')
       const { signer } = await requireWallet()
       const address = await signer.getAddress()
       const provider = signer.provider
@@ -800,38 +866,71 @@ function App() {
       setWalletAddress(address)
       setWalletChainId(Number(network.chainId))
       setWalletEthBalance(formatEther(balance))
-      setLiveStatus(`Connected ${shortAddress(address)} on Base Sepolia`)
+      setLiveStatus(`Connected ${shortAddress(address)} on Ethereum Sepolia`)
+      setWalletUiStatus(`Connected ${shortAddress(address)}`)
     } catch (err) {
-      setLiveStatus(err?.message ?? 'Wallet connection failed.')
+      const message = err?.message ?? 'Wallet connection failed.'
+      setLiveStatus(message)
+      setWalletUiStatus(message)
     } finally {
       setLiveWorking(false)
     }
   }
 
-  const buildLiveIntentPayload = () => {
-    if (!walletAddress) throw new Error('Connect wallet first.')
-    if (!isLikelyEvmAddress(tokenAddress)) throw new Error('Set a valid token contract for tokenOut.')
+  const disconnectWallet = () => {
+    setWalletAddress('')
+    setWalletChainId(null)
+    setWalletEthBalance('')
+    setLiveMakerAddress('')
+    setIntentSignature('')
+    setLiveSignedIntentPayload(null)
+    setLiveTxHash('')
+    setLiveStatus('Wallet disconnected.')
+    setWalletUiStatus('Wallet disconnected.')
+  }
+
+  const buildLiveIntentPayload = (tokenDecimals = 18) => {
+    const maker = liveMakerAddress || walletAddress
+    if (!maker) throw new Error('Connect wallet first.')
+    if (!isLikelyEvmAddress(liveTokenOut)) throw new Error('Set a valid token contract for tokenOut.')
     if (!isLikelyEvmAddress(settlementAddress)) throw new Error('Set valid settlement contract address.')
 
     const expiry = Math.floor(Date.now() / 1000) + Number(liveIntentExpirySec || '300')
     if (expiry <= Math.floor(Date.now() / 1000)) throw new Error('Expiry must be in the future.')
 
     return {
-      maker: walletAddress,
-      tokenOut: tokenAddress,
+      maker,
+      tokenOut: liveTokenOut,
       maxInputWei: parseEther(liveMaxInputEth || '0').toString(),
-      minOutputTokens: parseUnits(liveMinOutputTokens || '0', 18).toString(),
+      minOutputTokens: parseUnits(liveMinOutputTokens || '0', tokenDecimals).toString(),
       expiry: expiry.toString(),
       nonce: String(liveIntentNonce),
       allowPartial: true,
     }
   }
 
+  const resolveLiveTokenDecimals = async (provider) => {
+    try {
+      const token = new Contract(liveTokenOut, ERC20_READ_ABI, provider)
+      const decimals = Number(await token.decimals())
+      if (Number.isFinite(decimals) && decimals >= 0 && decimals <= 36) {
+        setLiveTokenDecimals(decimals)
+        return decimals
+      }
+      return 18
+    } catch {
+      return 18
+    }
+  }
+
   const liveChecks = useMemo(() => {
     const connected = Boolean(walletAddress)
-    const correctChain = Number(walletChainId) === BASE_SEPOLIA_CHAIN_ID
+    const correctChain = Number(walletChainId) === ETH_SEPOLIA_CHAIN_ID
     const contractValid = isLikelyEvmAddress(settlementAddress || '')
+    const tokenOutValid = isLikelyEvmAddress(liveTokenOut || '')
     const hasEth = Number(walletEthBalance || 0) > 0
+    const hasEthForLock =
+      Number(walletEthBalance || 0) > Number(liveMaxInputEth || 0) + 0.0005
     const hasSignature = Boolean(intentSignature)
     const lockAmountValid = Number(liveMaxInputEth || 0) > 0
     const fillAmountsValid =
@@ -839,10 +938,13 @@ function App() {
 
     return [
       { label: 'Wallet connected', pass: connected },
-      { label: 'Network = Base Sepolia', pass: correctChain },
+      { label: 'Network = Ethereum Sepolia', pass: correctChain },
       { label: 'Settlement contract address valid', pass: contractValid },
+      { label: 'Token out contract address valid', pass: tokenOutValid },
       { label: 'Wallet has test ETH for gas', pass: hasEth },
+      { label: 'Wallet balance covers lock + gas', pass: hasEthForLock },
       { label: 'Lock amount configured', pass: lockAmountValid },
+      { label: 'Demo self-fill mode or separate solver wallet', pass: true },
       { label: 'Intent signed (for Fill)', pass: hasSignature },
       { label: 'Fill amounts configured', pass: fillAmountsValid },
     ]
@@ -850,12 +952,37 @@ function App() {
     walletAddress,
     walletChainId,
     settlementAddress,
+    liveTokenOut,
     walletEthBalance,
-    intentSignature,
     liveMaxInputEth,
+    intentSignature,
     liveFillInputEth,
     liveFillOutputTokens,
   ])
+
+  const assertSettlementContractReady = async (provider, intent) => {
+    if (!isLikelyEvmAddress(settlementAddress)) {
+      throw new Error('Set a valid settlement contract address.')
+    }
+    if (sameAddress(settlementAddress, liveTokenOut)) {
+      throw new Error('Settlement contract cannot be the same as token contract address.')
+    }
+
+    const bytecode = await provider.getCode(settlementAddress)
+    if (!bytecode || bytecode === '0x') {
+      throw new Error('No contract deployed at settlement address on Ethereum Sepolia.')
+    }
+
+    const readContract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, provider)
+    try {
+      await readContract.hashIntentStruct(intent)
+    } catch (err) {
+      throw new Error(
+        'Settlement address is not a compatible IntentSettlement contract on Ethereum Sepolia.',
+        { cause: err },
+      )
+    }
+  }
 
   const signLiveIntent = async () => {
     try {
@@ -865,11 +992,14 @@ function App() {
       const { signer } = await requireWallet()
       const address = await signer.getAddress()
       setWalletAddress(address)
-      const intent = buildLiveIntentPayload()
+      setLiveMakerAddress(address)
+      const tokenDecimals = await resolveLiveTokenDecimals(signer.provider)
+      const intent = buildLiveIntentPayload(tokenDecimals)
+      await assertSettlementContractReady(signer.provider, intent)
       const domain = {
         name: 'SilentSignalIntent',
         version: '1',
-        chainId: BASE_SEPOLIA_CHAIN_ID,
+        chainId: ETH_SEPOLIA_CHAIN_ID,
         verifyingContract: settlementAddress,
       }
       const types = {
@@ -885,6 +1015,7 @@ function App() {
       }
       const signature = await signer.signTypedData(domain, types, intent)
       setIntentSignature(signature)
+      setLiveSignedIntentPayload(intent)
       setLiveStatus('Intent signed. Next: lock ETH into settlement contract.')
     } catch (err) {
       setLiveStatus(err?.message ?? 'Intent signing failed.')
@@ -899,7 +1030,17 @@ function App() {
       setLiveStatus('')
       setLiveTxHash('')
       const { signer } = await requireWallet()
-      const intent = buildLiveIntentPayload()
+      const tokenDecimals = await resolveLiveTokenDecimals(signer.provider)
+      const intent = liveSignedIntentPayload ?? buildLiveIntentPayload(tokenDecimals)
+      await assertSettlementContractReady(signer.provider, intent)
+      const onchainBalance = await signer.provider.getBalance(await signer.getAddress())
+      const lockValue = parseEther(liveMaxInputEth || '0')
+      const gasBuffer = parseEther('0.0005')
+      if (onchainBalance <= lockValue + gasBuffer) {
+        throw new Error(
+          'Insufficient ETH for lock + gas. Keep lock amount below wallet balance and leave ~0.0005 ETH for gas.',
+        )
+      }
       const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
       const intentHash = await contract.hashIntentStruct(intent)
       const tx = await contract.lockIntent(intentHash, intent.nonce, intent.expiry, {
@@ -922,19 +1063,85 @@ function App() {
       setLiveStatus('')
       setLiveTxHash('')
       const { signer } = await requireWallet()
-      const intent = buildLiveIntentPayload()
+      if (!liveSignedIntentPayload) {
+        throw new Error('Signed intent payload missing. Sign again, then retry fill.')
+      }
+      const tokenDecimals = await resolveLiveTokenDecimals(signer.provider)
+      const intent = liveSignedIntentPayload
+      await assertSettlementContractReady(signer.provider, intent)
+      const solverAddress = await signer.getAddress()
+      if (!liveAllowSelfFill && sameAddress(solverAddress, intent.maker)) {
+        throw new Error(
+          'Fill must be sent from a separate solver wallet. Connect solver wallet, then retry Fill.',
+        )
+      }
+
+      const requiredOut = parseUnits(liveFillOutputTokens || '0', tokenDecimals)
+      const token = new Contract(intent.tokenOut, ERC20_READ_ABI, signer.provider)
+      const solverTokenBalance = await token.balanceOf(solverAddress)
+      if (solverTokenBalance < requiredOut) {
+        throw new Error(
+          'Solver wallet has insufficient tokenOut balance for Fill amount.',
+        )
+      }
+
+      const solverAllowance = await token.allowance(solverAddress, settlementAddress)
+      if (solverAllowance < requiredOut) {
+        throw new Error(
+          'Solver wallet must approve tokenOut to settlement contract before Fill.',
+        )
+      }
+
       const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
       const tx = await contract.fillIntent(
         intent,
         parseEther(liveFillInputEth || '0').toString(),
-        parseUnits(liveFillOutputTokens || '0', 18).toString(),
+        requiredOut.toString(),
         intentSignature,
       )
       await tx.wait()
       setLiveTxHash(tx.hash)
       setLiveStatus('Intent fill executed on-chain.')
     } catch (err) {
-      setLiveStatus(err?.message ?? 'Fill transaction failed.')
+      const message = err?.message ?? 'Fill transaction failed.'
+      if (message.includes('Unexpected error') || message.includes('UNKNOWN_ERROR')) {
+        setLiveStatus(
+          'Fill transaction failed. Common causes: solver token not approved, no prior lock, or wrong settlement contract.',
+        )
+      } else {
+        setLiveStatus(message)
+      }
+    } finally {
+      setLiveWorking(false)
+    }
+  }
+
+  const approveLiveToken = async () => {
+    try {
+      setLiveWorking(true)
+      setLiveStatus('')
+      setLiveTxHash('')
+      if (!isLikelyEvmAddress(liveTokenOut)) {
+        throw new Error('Set a valid token contract for tokenOut.')
+      }
+      if (!isLikelyEvmAddress(settlementAddress)) {
+        throw new Error('Set valid settlement contract address.')
+      }
+
+      const { signer } = await requireWallet()
+      const tokenDecimals = await resolveLiveTokenDecimals(signer.provider)
+      const approveAmount = parseUnits(liveFillOutputTokens || '0', tokenDecimals)
+      if (approveAmount <= 0n) {
+        throw new Error('Set Fill Output Tokens to a value greater than zero before approve.')
+      }
+
+      const token = new Contract(liveTokenOut, ERC20_READ_ABI, signer)
+      const tx = await token.approve(settlementAddress, approveAmount)
+      await tx.wait()
+      setLiveTxHash(tx.hash)
+      setLiveStatus('Token approval confirmed. You can now run Fill.')
+    } catch (err) {
+      setLiveStatus(err?.message ?? 'Token approval failed.')
     } finally {
       setLiveWorking(false)
     }
@@ -964,7 +1171,21 @@ function App() {
               </button>
             ))}
           </nav>
-          <button type="button" className="nav-cta">Launch Monitor</button>
+          <div className="nav-actions">
+            <div className="nav-actions-row">
+              {walletAddress ? (
+                <button type="button" className="wallet-action-btn disconnect" onClick={disconnectWallet}>
+                  Disconnect Wallet
+                </button>
+              ) : (
+                <button type="button" className="wallet-action-btn" onClick={connectWallet} disabled={liveWorking}>
+                  {liveWorking ? 'Working...' : 'Connect Wallet'}
+                </button>
+              )}
+              <button type="button" className="nav-cta">Launch Monitor</button>
+            </div>
+            {walletUiStatus ? <p className="nav-wallet-status">{walletUiStatus}</p> : null}
+          </div>
         </div>
       </header>
 
@@ -1026,7 +1247,11 @@ function App() {
               <strong>{fillRate}%</strong>
             </div>
           </div>
-          <div className="wallet-pill">x402-ready architecture</div>
+          {walletAddress ? (
+            <div className="topbar-wallet">
+              <div className="wallet-pill">Connected {shortAddress(walletAddress)}</div>
+            </div>
+          ) : null}
         </header>
         {activeView === 'intent' ? (
         <>
@@ -1208,7 +1433,7 @@ function App() {
             <p className="muted">Compare intent behavior in two modes:</p>
             <div className="hub-badges">
               <span>Simulation: multi-LP route split</span>
-              <span>Live: Base Sepolia on-chain tx flow</span>
+              <span>Live: Ethereum Sepolia on-chain tx flow</span>
               <span>Proof: verifiable tx hashes</span>
             </div>
           </div>
@@ -1276,7 +1501,7 @@ function App() {
             </article>
             <article className="subpanel">
               <div className="panel-head">
-                <h3>Live Execution (Base Sepolia)</h3>
+                <h3>Live Execution (Ethereum Sepolia)</h3>
                 <span className="micro-tag">On-chain</span>
               </div>
               <div className="preflight">
@@ -1300,6 +1525,14 @@ function App() {
                   <input
                     value={settlementAddress}
                     onChange={(event) => setSettlementAddress(event.target.value)}
+                    placeholder="0x..."
+                  />
+                </label>
+                <label>
+                  Token Out Contract (ERC-20)
+                  <input
+                    value={liveTokenOut}
+                    onChange={(event) => setLiveTokenOut(event.target.value)}
                     placeholder="0x..."
                   />
                 </label>
@@ -1332,7 +1565,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  Min Output Tokens (18 decimals)
+                  Min Output Tokens ({liveTokenDecimals} decimals)
                   <input
                     value={liveMinOutputTokens}
                     onChange={(event) => setLiveMinOutputTokens(event.target.value)}
@@ -1352,7 +1585,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  Fill Output Tokens (18 decimals)
+                  Fill Output Tokens ({liveTokenDecimals} decimals)
                   <input
                     value={liveFillOutputTokens}
                     onChange={(event) => setLiveFillOutputTokens(event.target.value)}
@@ -1372,10 +1605,21 @@ function App() {
                 <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress}>
                   {liveWorking ? 'Working...' : '2) Lock'}
                 </button>
+                <button type="button" onClick={approveLiveToken} disabled={liveWorking || !walletAddress}>
+                  {liveWorking ? 'Working...' : '2.5) Approve Token'}
+                </button>
                 <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress}>
                   {liveWorking ? 'Working...' : '3) Fill'}
                 </button>
               </div>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={liveAllowSelfFill}
+                  onChange={(event) => setLiveAllowSelfFill(event.target.checked)}
+                />
+                <span>Demo self-solver mode (allow same wallet to fill)</span>
+              </label>
               <p className="field-help">
                 Recommended sequence: connect wallet -&gt; sign -&gt; lock -&gt; fill
               </p>
@@ -1384,7 +1628,7 @@ function App() {
                 <p className="muted">
                   Tx:{' '}
                   <a
-                    href={`https://sepolia.basescan.org/tx/${liveTxHash}`}
+                    href={`https://sepolia.etherscan.io/tx/${liveTxHash}`}
                     target="_blank"
                     rel="noreferrer"
                   >

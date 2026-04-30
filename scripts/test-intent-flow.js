@@ -1,6 +1,27 @@
 import { GoldRushClient } from '@covalenthq/client-sdk'
 import { readApiKey } from './shared.js'
 
+function chainToDex(chainName) {
+  return {
+    'eth-mainnet': 'ethereum',
+    'base-mainnet': 'base',
+    'matic-mainnet': 'polygon',
+    'bsc-mainnet': 'bsc',
+  }[chainName]
+}
+
+async function fallbackDexPrice(chainName, tokenAddress) {
+  const dexChain = chainToDex(chainName)
+  if (!dexChain) return null
+  const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenAddress}`)
+  if (!res.ok) return null
+  const payload = await res.json()
+  const pairs = Array.isArray(payload?.pairs) ? payload.pairs : []
+  const row = pairs.find((pair) => pair?.chainId === dexChain) ?? pairs[0]
+  const price = Number(row?.priceUsd ?? NaN)
+  return Number.isFinite(price) ? price : null
+}
+
 function isLikelyEvmAddress(value) {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value).trim())
 }
@@ -53,7 +74,10 @@ async function validateIntentType({ client, chainName, tokenAddress, makerWallet
 
   const priceRes = await client.PricingService.getTokenPrices(chainName, 'USD', tokenAddress)
   const tokenData = priceRes.data?.[0]
-  const lastPrice = Number(tokenData?.items?.[0]?.price ?? NaN)
+  const goldRushPrice = tokenData?.items?.[0]?.price ?? null
+  const dexFallbackPrice = await fallbackDexPrice(chainName, tokenAddress)
+  const resolvedPrice = goldRushPrice ?? dexFallbackPrice
+  const lastPrice = Number(resolvedPrice ?? NaN)
   const tokenSymbol = tokenData?.contract_ticker_symbol ?? 'TOKEN'
 
   checks.push({
@@ -99,6 +123,8 @@ async function validateIntentType({ client, chainName, tokenAddress, makerWallet
     intentType,
     symbol: tokenSymbol,
     latestPriceUsd: lastPrice,
+    goldRushPriceUsd: goldRushPrice,
+    dexFallbackPriceUsd: dexFallbackPrice,
     makerTrust,
     checks,
   }
