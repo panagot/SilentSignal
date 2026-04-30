@@ -388,6 +388,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [resolving, setResolving] = useState(false)
   const [activeView, setActiveView] = useState('intent')
+  const [executionView, setExecutionView] = useState('both')
   const [error, setError] = useState('')
   const [intents, setIntents] = useState(() => {
     try {
@@ -441,6 +442,7 @@ function App() {
     () => new Set(intents.map((intent) => intent.tokenSymbol)).size,
     [intents],
   )
+  const hasDefinedIntent = intents.length > 0
   const fillRate = useMemo(() => {
     if (!latestIntent || latestIntent.amount <= 0) return 0
     return Math.min(100, Math.round((latestIntent.filledAmount / latestIntent.amount) * 100))
@@ -939,6 +941,7 @@ function App() {
     return [
       { label: 'Wallet connected', pass: connected },
       { label: 'Network = Ethereum Sepolia', pass: correctChain },
+      { label: 'Intent defined in Step 1', pass: hasDefinedIntent },
       { label: 'Settlement contract address valid', pass: contractValid },
       { label: 'Token out contract address valid', pass: tokenOutValid },
       { label: 'Wallet has test ETH for gas', pass: hasEth },
@@ -951,6 +954,7 @@ function App() {
   }, [
     walletAddress,
     walletChainId,
+    hasDefinedIntent,
     settlementAddress,
     liveTokenOut,
     walletEthBalance,
@@ -1229,8 +1233,9 @@ function App() {
             <h2 className="page-title">{viewMeta.title}</h2>
             <p className="subtitle">{viewMeta.subtitle}</p>
             <p className="value-prop">
-              Core proposition: solvers split flow across multiple LP venues, then merge outcomes
-              into best-execution settlement.
+              SilentSignal lets users execute high-size intents with better privacy and fill quality:
+              solver agents confidentially split routing across multiple LP venues under on-chain
+              guardrails.
             </p>
           </div>
           <div className="topbar-metrics">
@@ -1255,11 +1260,23 @@ function App() {
         </header>
         {activeView === 'intent' ? (
         <>
+        <section className="panel flow-stepper">
+          <div className="stepper-row">
+            <div className="stepper-item active"><span>1</span><p>Define Intent</p></div>
+            <div className="stepper-item"><span>2</span><p>Sign</p></div>
+            <div className="stepper-item"><span>3</span><p>Lock</p></div>
+            <div className="stepper-item"><span>4</span><p>Approve</p></div>
+            <div className="stepper-item"><span>5</span><p>Fill</p></div>
+          </div>
+          <p className="field-help">
+            Step 1 creates the intent draft. Steps 2-5 run real wallet transactions on Ethereum Sepolia.
+          </p>
+        </section>
         <section id="intent-desk" className="dashboard-grid">
           <form className="panel controls" onSubmit={handleCreateIntent}>
           <h2>
             <span className="label-head">
-              Create Stealth Intent
+              1) Define Intent
               <InfoTip text="Intent is anonymized first, then solver discovery runs without revealing full maker profile." />
             </span>
           </h2>
@@ -1426,11 +1443,34 @@ function App() {
         </section>
         <section className="panel execution-hub">
           <div className="panel-head">
-            <h2>Execution Hub: Simulation + Live</h2>
+            <h2>2) Simulate and Execute</h2>
             <span className="micro-tag">{mevShieldEnabled ? 'Shield ON' : 'Shield OFF'}</span>
           </div>
+          <div className="mode-switch">
+            <button
+              type="button"
+              className={executionView === 'simulation' ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => setExecutionView('simulation')}
+            >
+              Simulation
+            </button>
+            <button
+              type="button"
+              className={executionView === 'live' ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => setExecutionView('live')}
+            >
+              Live
+            </button>
+            <button
+              type="button"
+              className={executionView === 'both' ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => setExecutionView('both')}
+            >
+              Split View
+            </button>
+          </div>
           <div className="hub-intro">
-            <p className="muted">Compare intent behavior in two modes:</p>
+            <p className="muted">Use simulation to preview routing, then run live settlement on Sepolia.</p>
             <div className="hub-badges">
               <span>Simulation: multi-LP route split</span>
               <span>Live: Ethereum Sepolia on-chain tx flow</span>
@@ -1446,7 +1486,7 @@ function App() {
             </span>
           </div>
           <div className="execution-columns">
-            <article className="subpanel">
+            {(executionView === 'both' || executionView === 'simulation') ? <article className="subpanel">
               <div className="panel-head">
                 <h3>1 ETH Simulation</h3>
                 <span className="micro-tag">Demo Ready</span>
@@ -1498,12 +1538,18 @@ function App() {
                   </div>
                 </div>
               )}
-            </article>
-            <article className="subpanel">
+            </article> : null}
+            {(executionView === 'both' || executionView === 'live') ? <article className="subpanel">
               <div className="panel-head">
-                <h3>Live Execution (Ethereum Sepolia)</h3>
+                <h3>2) Execute On-Chain (Ethereum Sepolia)</h3>
                 <span className="micro-tag">On-chain</span>
               </div>
+              <div className="clarity-note">
+                Live settlement uses the fields below (Sepolia). It does not use the Chain selector from Step 1.
+              </div>
+              {!hasDefinedIntent ? (
+                <p className="field-help">Publish an intent in Step 1 to enable Sign/Lock/Approve/Fill.</p>
+              ) : null}
               <div className="preflight">
                 <p className="nav-label">Preflight checks</p>
                 <ul className="check-list">
@@ -1518,6 +1564,7 @@ function App() {
                   Wallet: {walletAddress ? shortAddress(walletAddress) : 'not connected'} | Chain:{' '}
                   {walletChainId ?? '--'} | Balance: {walletEthBalance || '--'} ETH
                 </p>
+                <p className="field-help">For demo self-fill, this wallet needs Sepolia ETH + tokenOut balance + approve.</p>
               </div>
               <div className="live-grid">
                 <label>
@@ -1565,7 +1612,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  Min Output Tokens ({liveTokenDecimals} decimals)
+                  Min Output ({liveTokenDecimals}-dec token units)
                   <input
                     value={liveMinOutputTokens}
                     onChange={(event) => setLiveMinOutputTokens(event.target.value)}
@@ -1585,7 +1632,7 @@ function App() {
                   />
                 </label>
                 <label>
-                  Fill Output Tokens ({liveTokenDecimals} decimals)
+                  Fill Output ({liveTokenDecimals}-dec token units)
                   <input
                     value={liveFillOutputTokens}
                     onChange={(event) => setLiveFillOutputTokens(event.target.value)}
@@ -1599,16 +1646,16 @@ function App() {
                 <button type="button" onClick={connectWallet} disabled={liveWorking}>
                   {liveWorking ? 'Working...' : walletAddress ? 'Wallet Connected' : 'Connect Wallet'}
                 </button>
-                <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress}>
+                <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
                   {liveWorking ? 'Working...' : '1) Sign'}
                 </button>
-                <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress}>
+                <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
                   {liveWorking ? 'Working...' : '2) Lock'}
                 </button>
-                <button type="button" onClick={approveLiveToken} disabled={liveWorking || !walletAddress}>
+                <button type="button" onClick={approveLiveToken} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
                   {liveWorking ? 'Working...' : '2.5) Approve Token'}
                 </button>
-                <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress}>
+                <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
                   {liveWorking ? 'Working...' : '3) Fill'}
                 </button>
               </div>
@@ -1621,7 +1668,7 @@ function App() {
                 <span>Demo self-solver mode (allow same wallet to fill)</span>
               </label>
               <p className="field-help">
-                Recommended sequence: connect wallet -&gt; sign -&gt; lock -&gt; fill
+                Recommended sequence: connect -&gt; sign -&gt; lock -&gt; approve -&gt; fill
               </p>
               {liveStatus ? <p className="muted">{liveStatus}</p> : null}
               {liveTxHash ? (
@@ -1636,11 +1683,11 @@ function App() {
                   </a>
                 </p>
               ) : null}
-            </article>
+            </article> : null}
           </div>
           {intentSignature ? <p className="field-help">Signature captured: {intentSignature.slice(0, 20)}...</p> : null}
           <div className="live-proof">
-            <p className="nav-label">Verified Sepolia Example (what this proves)</p>
+            <p className="nav-label">Verified Sepolia examples</p>
             <ul className="live-explainers">
               {LIVE_EXECUTION_EXPLAINERS.map((item) => (
                 <li key={item}>{item}</li>
@@ -1670,7 +1717,7 @@ function App() {
             </div>
           </div>
           <div className="mev-inline">
-            <p className="nav-label">MEV Shield rails</p>
+            <p className="nav-label">Protection controls</p>
             <ul className="mev-list">
               <li><strong>Private relay</strong></li>
               <li><strong>Commit-reveal</strong></li>
@@ -1685,72 +1732,71 @@ function App() {
         <section className="visual-strip">
           <article className="panel hero-visual">
             <div>
-              <p className="eyebrow">Stealth Liquidity Map</p>
-              <h3>Anonymous order flow, rendered as live signal lanes</h3>
+              <p className="eyebrow">Execution Summary</p>
+              <h3>Current system state</h3>
               <p className="muted">
-                Intent publication, solver scoring, and staged execution are separated into
-                observable control layers.
+                Snapshot of intent status, solver readiness, and settlement progress.
               </p>
             </div>
             <SignalArtwork />
           </article>
           <article className="panel metric-stack">
             <div>
-              <p className="eyebrow">Intent Health</p>
-              <h3>{openIntentsCount}/{Math.max(1, intents.length)} open</h3>
-              <p className="muted">Open intent pressure in current session.</p>
+              <p className="eyebrow">Open Intents</p>
+              <h3>{openIntentsCount} open</h3>
+              <p className="muted">Number of intents currently waiting for complete settlement.</p>
             </div>
             <div className="meter">
               <span style={{ width: `${Math.max(8, Math.min(100, openIntentsCount * 20))}%` }} />
             </div>
             <div>
-              <p className="eyebrow">Execution Yield</p>
+              <p className="eyebrow">Fill Completion</p>
               <h3>{fillRate}%</h3>
-              <p className="muted">Latest intent fill completion ratio.</p>
+              <p className="muted">How much of the latest intent amount has been filled.</p>
             </div>
           </article>
         </section>
         <section className="kpi-banner">
           <article className="kpi-item">
-            <p>Intent Throughput</p>
+            <p>Intent Ops / Hour</p>
             <h4>{intents.length * 7 + openIntentsCount}</h4>
-            <span>simulated ops/hour</span>
+            <span>estimated activity rate</span>
           </article>
           <article className="kpi-item">
             <p>Solver Readiness</p>
             <h4>{solverMatches[0]?.matchScore ?? 0}%</h4>
-            <span>best candidate confidence</span>
+            <span>top solver confidence score</span>
           </article>
           <article className="kpi-item">
-            <p>Stealth Integrity</p>
+            <p>Privacy Posture</p>
             <h4>{Math.max(72, 100 - fillRate / 2)}%</h4>
-            <span>privacy posture index</span>
+            <span>estimated stealth quality index</span>
           </article>
         </section>
         <section className="infographics-grid">
           <article className="panel">
             <div className="panel-head">
-              <h2>Execution Completion</h2>
-              <span className="micro-tag">Live</span>
+              <h2>Latest Intent Progress</h2>
+              <span className="micro-tag">Summary</span>
             </div>
             <div className="donut-wrap">
               <DonutChart value={fillRate} />
               <div>
-                <p className="muted">Based on latest intent lifecycle progression.</p>
-                <p className="muted">Higher values indicate faster solver settlement.</p>
+                <p className="muted">Shows completion of the latest intent from 0% to 100%.</p>
+                <p className="muted">A higher value means more of the order has already settled.</p>
               </div>
             </div>
           </article>
           <article className="panel">
             <div className="panel-head">
-              <h2>Status Distribution</h2>
+              <h2>Intent Status Mix</h2>
               <span className="micro-tag">Session</span>
             </div>
             <DistributionBars rows={statusDistribution} />
           </article>
           <article className="panel">
             <div className="panel-head">
-              <h2>Chain Activity</h2>
+              <h2>Chain Mix</h2>
               <span className="micro-tag">Heat</span>
             </div>
             <DistributionBars
@@ -1763,14 +1809,14 @@ function App() {
           </article>
           <article className="panel timeline-panel">
             <div className="panel-head">
-              <h2>Intent Lifecycle Timeline</h2>
+              <h2>Execution Stages</h2>
               <span className="micro-tag">Flow</span>
             </div>
             <div className="timeline">
-              <div><span />Intent Published</div>
-              <div><span />Anonymous Broadcast</div>
-              <div><span />Solver Discovery</div>
-              <div><span />Partial/Full Settlement</div>
+              <div><span />Intent defined</div>
+              <div><span />Intent signed</div>
+              <div><span />Funds locked + token approved</div>
+              <div><span />Fill settled on-chain</div>
             </div>
           </article>
         </section>

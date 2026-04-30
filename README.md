@@ -5,7 +5,21 @@ SilentSignal is an intent-based execution demo that combines:
 - GoldRush market + wallet data
 - solver simulation and trust scoring
 - MEV-shield concept modeling
-- optional live execution path on Base Sepolia
+- optional live execution path on Ethereum Sepolia
+
+## Value Proposition
+
+**Short pitch**
+
+SilentSignal lets users execute large on-chain intents with better privacy and execution quality by
+using solver agents that confidentially route and split flow across multiple LPs.
+
+**How it is different**
+
+- Users submit one high-level intent (outcome + guardrails), not a fully exposed public order.
+- Solver/AI agents compete on execution quality instead of users manually routing venue by venue.
+- Routing can be split across multiple liquidity venues to reduce footprint and improve fill quality.
+- Settlement guardrails are enforced on-chain (max input, min output, expiry, signature).
 
 ## App Commands
 
@@ -14,9 +28,9 @@ SilentSignal is an intent-based execution demo that combines:
 - `npm run build` - production build
 - `npm run test:intentflow` - buy/sell intent flow validation
 
-## Live Execution (Base Sepolia)
+## Live Execution (Ethereum Sepolia)
 
-The app includes a `Live Execution (Base Sepolia)` panel for:
+The app includes a `Live Execution (Ethereum Sepolia)` panel for:
 
 1. connecting wallet
 2. signing EIP-712 intent
@@ -52,7 +66,7 @@ Copy `.env.example` and fill values:
 
 - `VITE_GOLDRUSH_API_KEY`
 - `VITE_SETTLEMENT_CONTRACT_ADDRESS` (after deployment)
-- `BASE_SEPOLIA_RPC_URL`
+- `SEPOLIA_RPC_URL` (or `BASE_SEPOLIA_RPC_URL` fallback in script)
 - `DEPLOYER_PRIVATE_KEY`
 
 ## Settlement Contract
@@ -61,7 +75,7 @@ Compile:
 
 - `npm run contracts:compile`
 
-Deploy to Base Sepolia:
+Deploy to Ethereum Sepolia:
 
 - `npm run contracts:deploy:base-sepolia`
 
