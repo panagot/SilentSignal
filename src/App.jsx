@@ -28,6 +28,8 @@ import {
   BarChart3,
   ShieldAlert,
   Rocket,
+  Coins,
+  ArrowRight,
 } from 'lucide-react'
 import './App.css'
 import {
@@ -1508,6 +1510,52 @@ function App() {
             </div>
           </div>
         </motion.section>
+        <motion.section
+          className="how-it-works"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="how-card">
+            <div className="how-icon">
+              <PenTool size={18} strokeWidth={2.2} />
+            </div>
+            <h4>1. Sign your intent</h4>
+            <p>
+              Describe the outcome — token, max input, min output, expiry. We sign it as an
+              EIP-712 message so the route stays private.
+            </p>
+            <span className="how-tag">Private envelope</span>
+          </div>
+          <div className="how-arrow" aria-hidden="true">
+            <ArrowRight size={18} strokeWidth={2} />
+          </div>
+          <div className="how-card">
+            <div className="how-icon">
+              <Cpu size={18} strokeWidth={2.2} />
+            </div>
+            <h4>2. Solvers compete</h4>
+            <p>
+              Allowlisted solver agents bid to fill your intent inside a short batch window,
+              splitting flow across multiple LPs.
+            </p>
+            <span className="how-tag">Sealed-bid auction</span>
+          </div>
+          <div className="how-arrow" aria-hidden="true">
+            <ArrowRight size={18} strokeWidth={2} />
+          </div>
+          <div className="how-card">
+            <div className="how-icon">
+              <ShieldCheck size={18} strokeWidth={2.2} />
+            </div>
+            <h4>3. Settle on-chain</h4>
+            <p>
+              The settlement contract enforces your guardrails (min out, expiry, signature)
+              and emits a verifiable fill on Sepolia.
+            </p>
+            <span className="how-tag">Verifiable proof</span>
+          </div>
+        </motion.section>
         <header className="topbar">
           <div className="topbar-main">
             <p className="eyebrow">SilentSignal Control Surface</p>
@@ -1764,34 +1812,58 @@ function App() {
                 <h3>1 ETH Simulation</h3>
                 <span className="micro-tag">Demo Ready</span>
               </div>
-              <div className="demo-actions">
+              <div className="demo-actions sim-actions">
                 <button
                   type="button"
-                  className="live-step-btn primary"
+                  className="live-step-btn primary sim-btn"
                   onClick={() => handleRunOneEthDemo('buy')}
                   disabled={demoLoading || loading}
                 >
                   {demoLoading ? <Loader2 size={14} className="spin" /> : <PlayCircle size={14} />}
-                  {demoLoading ? 'Simulating...' : 'Simulate Buy with 1 ETH'}
+                  {demoLoading ? 'Simulating...' : 'Simulate Buy 1 ETH'}
                 </button>
                 <button
                   type="button"
-                  className="live-step-btn"
+                  className="live-step-btn sim-btn"
                   onClick={() => handleRunOneEthDemo('sell')}
                   disabled={demoLoading || loading}
                 >
                   {demoLoading ? <Loader2 size={14} className="spin" /> : <TrendingUp size={14} />}
-                  {demoLoading ? 'Simulating...' : 'Simulate Sell worth 1 ETH'}
+                  {demoLoading ? 'Simulating...' : 'Simulate Sell ~1 ETH'}
                 </button>
               </div>
               <p className="field-help">
                 Mode: <strong>{mevShieldEnabled ? 'MEV Shield ON' : 'MEV Shield OFF'}</strong>
               </p>
-              {demoError ? <p className="error">{demoError}</p> : null}
+              {demoError ? (
+                <p className="error">
+                  <XCircle size={13} strokeWidth={2.4} /> {demoError}
+                </p>
+              ) : null}
               {!demoResult ? (
-                <div className="empty-state">
-                  <p className="empty-title">No simulation run yet</p>
-                  <p className="muted">Run buy or sell to generate route split and solver outcome.</p>
+                <div className="sim-empty">
+                  <div className="sim-empty-art" aria-hidden="true">
+                    <span className="sim-orb sim-orb-a" />
+                    <span className="sim-orb sim-orb-b" />
+                    <span className="sim-orb sim-orb-c" />
+                    <svg viewBox="0 0 200 80" className="sim-route">
+                      <defs>
+                        <linearGradient id="simGrad" x1="0" y1="0" x2="1" y2="0">
+                          <stop offset="0%" stopColor="#22d3ee" />
+                          <stop offset="100%" stopColor="#14b8a6" />
+                        </linearGradient>
+                      </defs>
+                      <path d="M10 40 Q60 0 100 40 T 190 40" fill="none" stroke="url(#simGrad)" strokeWidth="2.5" strokeDasharray="4 6" />
+                      <circle cx="10" cy="40" r="4" fill="#0ea5e9" />
+                      <circle cx="100" cy="40" r="3" fill="#0ea5e9" opacity="0.5" />
+                      <circle cx="190" cy="40" r="4" fill="#14b8a6" />
+                    </svg>
+                  </div>
+                  <p className="sim-empty-title">Ready to simulate</p>
+                  <p className="muted">
+                    Run a buy or sell to see solver competition, multi-LP route split, and the
+                    expected fill quote against live prices.
+                  </p>
                 </div>
               ) : (
                 <div className="demo-grid">
@@ -1828,20 +1900,45 @@ function App() {
                 You can execute directly from this panel. Step 1 intent publishing is optional for live testing.
               </p>
               <div className="preflight">
-                <p className="nav-label">Preflight checks</p>
+                <div className="preflight-head">
+                  <p className="nav-label">
+                    <ShieldCheck size={12} strokeWidth={2.4} /> Preflight checks
+                  </p>
+                  <span className="preflight-progress">
+                    {liveChecks.filter((c) => c.pass).length}/{liveChecks.length} ready
+                  </span>
+                </div>
                 <ul className="check-list">
                   {liveChecks.map((check) => (
-                    <li key={check.label} className={check.pass ? 'ok' : 'fail'}>
-                      <span>{check.pass ? 'OK' : 'X'}</span>
+                    <li
+                      key={check.label}
+                      className={check.pass ? 'ok' : walletAddress ? 'fail' : 'pending'}
+                    >
+                      <span>
+                        {check.pass ? (
+                          <Check size={11} strokeWidth={3} />
+                        ) : walletAddress ? (
+                          <XCircle size={11} strokeWidth={2.5} />
+                        ) : null}
+                      </span>
                       <p>{check.label}</p>
                     </li>
                   ))}
                 </ul>
+                <div className="preflight-meta">
+                  <span>
+                    <Wallet size={11} /> {walletAddress ? shortAddress(walletAddress) : 'not connected'}
+                  </span>
+                  <span>
+                    <Network size={11} /> chain {walletChainId ?? '--'}
+                  </span>
+                  <span>
+                    <Coins size={11} /> {walletEthBalance ? `${Number(walletEthBalance).toFixed(4)} ETH` : '-- ETH'}
+                  </span>
+                </div>
                 <p className="field-help">
-                  Wallet: {walletAddress ? shortAddress(walletAddress) : 'not connected'} | Chain:{' '}
-                  {walletChainId ?? '--'} | Balance: {walletEthBalance || '--'} ETH
+                  For demo self-fill, this wallet needs Sepolia ETH + tokenOut balance + approval.
                 </p>
-                <p className="field-help">For demo self-fill, this wallet needs Sepolia ETH + tokenOut balance + approve.</p>
               </div>
               <div className="live-grid">
                 <label>

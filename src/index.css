@@ -1,11 +1,14 @@
 :root {
-  --sans: Inter, 'Segoe UI', Roboto, system-ui, sans-serif;
-  --heading: Inter, 'Segoe UI', Roboto, system-ui, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --heading: 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 
-  font: 15px/150% var(--sans);
-  color: #32486f;
-  background: #eaf0fb;
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: #0f172a;
+  background: #f6f9ff;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,7 +18,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #eaf0fb;
+  font-family: var(--sans);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.06) 0%, transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.05) 0%, transparent 40%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4fb 100%);
+  background-attachment: fixed;
 }
 
 #root {
@@ -29,14 +37,18 @@ body {
 }
 
 h1,
-h2 {
+h2,
+h3,
+h4 {
   font-family: var(--heading);
   font-weight: 700;
-  color: #182746;
+  color: #0f172a;
+  letter-spacing: -0.01em;
 }
 
 h1 {
   margin: 0;
+  letter-spacing: -0.025em;
 }
 
 h2 {
@@ -48,7 +60,33 @@ p {
 }
 
 code,
-.counter {
+.counter,
+.tx-hash {
   font-family: var(--mono);
-  color: #182746;
+  color: #0f172a;
+  font-feature-settings: 'liga' 0;
+}
+
+::selection {
+  background: rgba(14, 165, 233, 0.18);
+  color: #0c4a6e;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.32);
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
