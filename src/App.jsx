@@ -1,6 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { GoldRushClient } from '@covalenthq/client-sdk'
 import { BrowserProvider, Contract, formatEther, parseEther, parseUnits } from 'ethers'
+import { Toaster, toast } from 'react-hot-toast'
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
+import {
+  Wallet,
+  Zap,
+  EyeOff,
+  Copy,
+  Check,
+  ExternalLink,
+  Activity,
+  Layers,
+  Lock,
+  Search,
+  TrendingUp,
+  Radio,
+  Network,
+  Sparkles,
+  Cpu,
+  PenTool,
+  XCircle,
+  Loader2,
+  ShieldCheck,
+  Info,
+  PlayCircle,
+  BarChart3,
+  ShieldAlert,
+  Rocket,
+} from 'lucide-react'
 import './App.css'
 import {
   ETH_SEPOLIA_CHAIN_ID,
@@ -117,6 +145,7 @@ const ETH_SEPOLIA_NETWORK_PARAMS = {
   rpcUrls: ['https://rpc.sepolia.org'],
   blockExplorerUrls: ['https://sepolia.etherscan.io'],
 }
+const WALLET_TIMEOUT_MS = 45000
 const ERC20_READ_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
@@ -168,6 +197,15 @@ function shortAddress(address) {
 
 function sameAddress(a, b) {
   return String(a || '').toLowerCase() === String(b || '').toLowerCase()
+}
+
+function withTimeout(promise, ms, timeoutMessage) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(timeoutMessage)), ms),
+    ),
+  ])
 }
 
 function deterministicTrustFromAddress(address) {
@@ -274,10 +312,68 @@ async function fetchDexScreenerMarketCap(chainName, tokenAddress) {
 function InfoTip({ text }) {
   return (
     <span className="info-tip" title={text} aria-label={text}>
-      i
+      <Info size={11} strokeWidth={2.5} />
     </span>
   )
 }
+
+function AnimatedCounter({ value, decimals = 0, suffix = '', duration = 1.1 }) {
+  const numericTarget = Number.isFinite(Number(value)) ? Number(value) : 0
+  const count = useMotionValue(0)
+  const display = useTransform(count, (latest) =>
+    `${latest.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}${suffix}`,
+  )
+
+  useEffect(() => {
+    const controls = animate(count, numericTarget, {
+      duration,
+      ease: [0.16, 1, 0.3, 1],
+    })
+    return () => controls.stop()
+  }, [count, numericTarget, duration])
+
+  return <motion.span>{display}</motion.span>
+}
+
+function CopyButton({ value, label = 'Copy' }) {
+  const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef(null)
+
+  useEffect(
+    () => () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    },
+    [],
+  )
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(value ?? ''))
+      setCopied(true)
+      toast.success('Copied to clipboard')
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      timeoutRef.current = setTimeout(() => setCopied(false), 1400)
+    } catch {
+      toast.error('Could not copy')
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="copy-btn"
+      onClick={handleCopy}
+      aria-label={label}
+      title={label}
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </button>
+  )
+}
+
 
 function MiniBars({ values }) {
   const max = Math.max(...values, 1)
@@ -347,10 +443,18 @@ function DistributionBars({ rows }) {
 }
 
 function NavIcon({ type }) {
-  if (type === 'intent') return <span className="nav-icon">◉</span>
-  if (type === 'solver') return <span className="nav-icon">◇</span>
-  if (type === 'flow') return <span className="nav-icon">↝</span>
-  return <span className="nav-icon">▣</span>
+  const iconMap = {
+    intent: PenTool,
+    solver: Cpu,
+    flow: Network,
+    analytics: BarChart3,
+  }
+  const Icon = iconMap[type] ?? Activity
+  return (
+    <span className="nav-icon">
+      <Icon size={14} strokeWidth={2.2} />
+    </span>
+  )
 }
 
 function SilentSignalLogo() {
@@ -442,7 +546,6 @@ function App() {
     () => new Set(intents.map((intent) => intent.tokenSymbol)).size,
     [intents],
   )
-  const hasDefinedIntent = intents.length > 0
   const fillRate = useMemo(() => {
     if (!latestIntent || latestIntent.amount <= 0) return 0
     return Math.min(100, Math.round((latestIntent.filledAmount / latestIntent.amount) * 100))
@@ -471,6 +574,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(intents))
   }, [intents])
+
+  useEffect(() => {
+    if (!liveWorking) return undefined
+    const timer = setTimeout(() => {
+      setLiveWorking(false)
+      setLiveStatus('Wallet action timed out. Buttons unlocked - retry your action.')
+      setWalletUiStatus('Wallet action timed out. Reopen wallet and retry.')
+      toast.error('Wallet action timed out - buttons unlocked')
+    }, 30000)
+    return () => clearTimeout(timer)
+  }, [liveWorking])
 
   const handleCreateIntent = async (event) => {
     event.preventDefault()
@@ -604,8 +718,13 @@ function App() {
         ].slice(0, 6),
       )
       setSolverMatches([])
+      toast.success(
+        `Stealth intent published for ${tokenData.contract_ticker_symbol ?? 'TOKEN'}`,
+      )
     } catch (err) {
-      setError(err?.message ?? 'Failed to create intent.')
+      const msg = err?.message ?? 'Failed to create intent.'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -654,8 +773,15 @@ function App() {
       )
       matches.sort((a, b) => b.matchScore - a.matchScore)
       setSolverMatches(matches)
+      if (matches.length > 0) {
+        toast.success(`Ranked ${matches.length} solver candidates`)
+      } else {
+        toast('No solver candidates passed the allowlist', { icon: 'ℹ️' })
+      }
     } catch (err) {
-      setError(err?.message ?? 'Failed to discover solvers.')
+      const msg = err?.message ?? 'Failed to discover solvers.'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -688,8 +814,13 @@ function App() {
             : intent,
         ),
       )
+      toast.success(
+        `Filled ${formatCurrency(fillAmount)} ${latestIntent.tokenSymbol} via ${shortAddress(winner.solver)}`,
+      )
     } catch (err) {
-      setError(err?.message ?? 'Failed to resolve intent.')
+      const msg = err?.message ?? 'Failed to resolve intent.'
+      setError(msg)
+      toast.error(msg)
     } finally {
       setResolving(false)
     }
@@ -798,8 +929,15 @@ function App() {
         mevShieldEnabled,
         routeBreakdown,
       })
+      toast.success(
+        `Simulated ${mode.toUpperCase()} 1 ETH -> ${formatCurrency(best.estimatedOut)} ${
+          token?.contract_ticker_symbol ?? 'TOKEN'
+        }`,
+      )
     } catch (err) {
-      setDemoError(err?.message ?? 'Failed to run 1 ETH simulation.')
+      const msg = err?.message ?? 'Failed to run 1 ETH simulation.'
+      setDemoError(msg)
+      toast.error(msg)
     } finally {
       setDemoLoading(false)
     }
@@ -810,9 +948,17 @@ function App() {
       throw new Error('No injected wallet found. Install MetaMask or Rabby.')
     }
 
-    await window.ethereum.request({ method: 'eth_requestAccounts' })
+    await withTimeout(
+      window.ethereum.request({ method: 'eth_requestAccounts' }),
+      WALLET_TIMEOUT_MS,
+      'Wallet connection timed out. Open your wallet extension and approve the request.',
+    )
     const getChainIdHex = async () => {
-      const chainId = await window.ethereum.request({ method: 'eth_chainId' })
+      const chainId = await withTimeout(
+        window.ethereum.request({ method: 'eth_chainId' }),
+        WALLET_TIMEOUT_MS,
+        'Wallet chain check timed out. Reopen wallet and retry.',
+      )
       return String(chainId).toLowerCase()
     }
 
@@ -846,7 +992,11 @@ function App() {
     }
 
     const provider = new BrowserProvider(window.ethereum)
-    const signer = await provider.getSigner()
+    const signer = await withTimeout(
+      provider.getSigner(),
+      WALLET_TIMEOUT_MS,
+      'Wallet signer request timed out. Reopen wallet and retry.',
+    )
     const network = await provider.getNetwork()
     if (Number(network.chainId) !== ETH_SEPOLIA_CHAIN_ID) {
       throw new Error('Wallet chain mismatch after switch. Please retry connect.')
@@ -856,10 +1006,11 @@ function App() {
   }
 
   const connectWallet = async () => {
+    const tid = toast.loading('Connecting wallet...')
     try {
       setLiveWorking(true)
       setLiveStatus('')
-      setWalletUiStatus('')
+      setWalletUiStatus('Opening wallet...')
       const { signer } = await requireWallet()
       const address = await signer.getAddress()
       const provider = signer.provider
@@ -868,15 +1019,27 @@ function App() {
       setWalletAddress(address)
       setWalletChainId(Number(network.chainId))
       setWalletEthBalance(formatEther(balance))
-      setLiveStatus(`Connected ${shortAddress(address)} on Ethereum Sepolia`)
+      const success = `Connected ${shortAddress(address)} on Ethereum Sepolia`
+      setLiveStatus(success)
       setWalletUiStatus(`Connected ${shortAddress(address)}`)
+      toast.success(success, { id: tid })
     } catch (err) {
-      const message = err?.message ?? 'Wallet connection failed.'
+      const message =
+        err?.code === 4001
+          ? 'Wallet request rejected. Approve the request in your wallet to continue.'
+          : err?.message ?? 'Wallet connection failed.'
       setLiveStatus(message)
       setWalletUiStatus(message)
+      toast.error(message, { id: tid })
     } finally {
       setLiveWorking(false)
     }
+  }
+
+  const resetLiveAction = () => {
+    setLiveWorking(false)
+    setLiveStatus('Previous wallet action reset. You can retry now.')
+    toast.success('Buttons unlocked. Retry your action.')
   }
 
   const disconnectWallet = () => {
@@ -888,7 +1051,8 @@ function App() {
     setLiveSignedIntentPayload(null)
     setLiveTxHash('')
     setLiveStatus('Wallet disconnected.')
-    setWalletUiStatus('Wallet disconnected.')
+    setWalletUiStatus('')
+    toast.success('Wallet disconnected')
   }
 
   const buildLiveIntentPayload = (tokenDecimals = 18) => {
@@ -941,7 +1105,6 @@ function App() {
     return [
       { label: 'Wallet connected', pass: connected },
       { label: 'Network = Ethereum Sepolia', pass: correctChain },
-      { label: 'Intent defined in Step 1', pass: hasDefinedIntent },
       { label: 'Settlement contract address valid', pass: contractValid },
       { label: 'Token out contract address valid', pass: tokenOutValid },
       { label: 'Wallet has test ETH for gas', pass: hasEth },
@@ -954,7 +1117,6 @@ function App() {
   }, [
     walletAddress,
     walletChainId,
-    hasDefinedIntent,
     settlementAddress,
     liveTokenOut,
     walletEthBalance,
@@ -989,6 +1151,7 @@ function App() {
   }
 
   const signLiveIntent = async () => {
+    const tid = toast.loading('Sign intent in wallet...')
     try {
       setLiveWorking(true)
       setLiveStatus('')
@@ -1021,14 +1184,18 @@ function App() {
       setIntentSignature(signature)
       setLiveSignedIntentPayload(intent)
       setLiveStatus('Intent signed. Next: lock ETH into settlement contract.')
+      toast.success('Intent signed', { id: tid })
     } catch (err) {
-      setLiveStatus(err?.message ?? 'Intent signing failed.')
+      const msg = err?.message ?? 'Intent signing failed.'
+      setLiveStatus(msg)
+      toast.error(msg, { id: tid })
     } finally {
       setLiveWorking(false)
     }
   }
 
   const lockLiveIntent = async () => {
+    const tid = toast.loading('Locking ETH on settlement...')
     try {
       setLiveWorking(true)
       setLiveStatus('')
@@ -1047,20 +1214,25 @@ function App() {
       }
       const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
       const intentHash = await contract.hashIntentStruct(intent)
+      toast.loading('Waiting for lock confirmation...', { id: tid })
       const tx = await contract.lockIntent(intentHash, intent.nonce, intent.expiry, {
         value: parseEther(liveMaxInputEth || '0'),
       })
       await tx.wait()
       setLiveTxHash(tx.hash)
       setLiveStatus('ETH locked on-chain. Solver can now fill intent.')
+      toast.success('ETH locked on-chain', { id: tid })
     } catch (err) {
-      setLiveStatus(err?.message ?? 'Lock transaction failed.')
+      const msg = err?.message ?? 'Lock transaction failed.'
+      setLiveStatus(msg)
+      toast.error(msg, { id: tid })
     } finally {
       setLiveWorking(false)
     }
   }
 
   const fillLiveIntent = async () => {
+    const tid = toast.loading('Filling intent on-chain...')
     try {
       if (!intentSignature) throw new Error('Sign intent first before filling.')
       setLiveWorking(true)
@@ -1097,6 +1269,7 @@ function App() {
       }
 
       const contract = new Contract(settlementAddress, INTENT_SETTLEMENT_ABI, signer)
+      toast.loading('Submitting fill transaction...', { id: tid })
       const tx = await contract.fillIntent(
         intent,
         parseEther(liveFillInputEth || '0').toString(),
@@ -1106,21 +1279,22 @@ function App() {
       await tx.wait()
       setLiveTxHash(tx.hash)
       setLiveStatus('Intent fill executed on-chain.')
+      toast.success('Fill executed on-chain', { id: tid })
     } catch (err) {
       const message = err?.message ?? 'Fill transaction failed.'
-      if (message.includes('Unexpected error') || message.includes('UNKNOWN_ERROR')) {
-        setLiveStatus(
-          'Fill transaction failed. Common causes: solver token not approved, no prior lock, or wrong settlement contract.',
-        )
-      } else {
-        setLiveStatus(message)
-      }
+      const friendly =
+        message.includes('Unexpected error') || message.includes('UNKNOWN_ERROR')
+          ? 'Fill transaction failed. Common causes: solver token not approved, no prior lock, or wrong settlement contract.'
+          : message
+      setLiveStatus(friendly)
+      toast.error(friendly, { id: tid })
     } finally {
       setLiveWorking(false)
     }
   }
 
   const approveLiveToken = async () => {
+    const tid = toast.loading('Sending token approval...')
     try {
       setLiveWorking(true)
       setLiveStatus('')
@@ -1140,12 +1314,16 @@ function App() {
       }
 
       const token = new Contract(liveTokenOut, ERC20_READ_ABI, signer)
+      toast.loading('Waiting for approval confirmation...', { id: tid })
       const tx = await token.approve(settlementAddress, approveAmount)
       await tx.wait()
       setLiveTxHash(tx.hash)
       setLiveStatus('Token approval confirmed. You can now run Fill.')
+      toast.success('Token approval confirmed', { id: tid })
     } catch (err) {
-      setLiveStatus(err?.message ?? 'Token approval failed.')
+      const msg = err?.message ?? 'Token approval failed.'
+      setLiveStatus(msg)
+      toast.error(msg, { id: tid })
     } finally {
       setLiveWorking(false)
     }
@@ -1153,6 +1331,28 @@ function App() {
 
   return (
     <div className="page-root">
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4500,
+          style: {
+            background: '#0f172a',
+            color: '#e2e8f0',
+            border: '1px solid rgba(148, 163, 184, 0.2)',
+            borderRadius: '12px',
+            padding: '10px 14px',
+            fontSize: '0.85rem',
+            fontWeight: 500,
+            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18)',
+          },
+          success: {
+            iconTheme: { primary: '#22d3ee', secondary: '#0f172a' },
+          },
+          error: {
+            iconTheme: { primary: '#f87171', secondary: '#0f172a' },
+          },
+        }}
+      />
       <header className="global-nav">
         <div className="global-nav-inner">
           <div className="nav-brand">
@@ -1161,6 +1361,10 @@ function App() {
               <strong>SilentSignal</strong>
               <span>Stealth Intent Infrastructure</span>
             </div>
+            <span className="nav-pill-live">
+              <span className="dot-pulse" />
+              Sepolia Live
+            </span>
           </div>
           <nav className="nav-links">
             {VIEWS.map((view) => (
@@ -1178,15 +1382,38 @@ function App() {
           <div className="nav-actions">
             <div className="nav-actions-row">
               {walletAddress ? (
-                <button type="button" className="wallet-action-btn disconnect" onClick={disconnectWallet}>
-                  Disconnect Wallet
+                <button
+                  type="button"
+                  className="wallet-action-btn disconnect"
+                  onClick={disconnectWallet}
+                >
+                  <Wallet size={14} strokeWidth={2.4} />
+                  {shortAddress(walletAddress)}
                 </button>
               ) : (
-                <button type="button" className="wallet-action-btn" onClick={connectWallet} disabled={liveWorking}>
-                  {liveWorking ? 'Working...' : 'Connect Wallet'}
+                <button
+                  type="button"
+                  className="wallet-action-btn"
+                  onClick={connectWallet}
+                  disabled={liveWorking}
+                >
+                  {liveWorking ? (
+                    <Loader2 size={14} className="spin" strokeWidth={2.4} />
+                  ) : (
+                    <Wallet size={14} strokeWidth={2.4} />
+                  )}
+                  {liveWorking ? 'Connecting...' : 'Connect Wallet'}
                 </button>
               )}
-              <button type="button" className="nav-cta">Launch Monitor</button>
+              <a
+                className="nav-cta"
+                href="https://github.com/panagot/SilentSignal"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Sparkles size={14} strokeWidth={2.4} />
+                View on GitHub
+              </a>
             </div>
             {walletUiStatus ? <p className="nav-wallet-status">{walletUiStatus}</p> : null}
           </div>
@@ -1227,36 +1454,86 @@ function App() {
       </aside>
 
         <main className="app-shell">
+        <motion.section
+          className="hero-banner"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="hero-banner-orbit" aria-hidden="true">
+            <span /><span /><span />
+          </div>
+          <div className="hero-banner-main">
+            <span className="hero-eyebrow">
+              <Sparkles size={14} strokeWidth={2.4} />
+              Privacy-Aware Intent Execution
+            </span>
+            <h1 className="hero-title">
+              Submit your <em>intent</em>. Solvers compete to fill it{' '}
+              <span className="hero-accent">privately</span>.
+            </h1>
+            <p className="hero-sub">
+              Users sign a high-level buy/sell intent with on-chain guardrails. Solver agents
+              confidentially split flow across multiple LPs and settle through a verifiable
+              EIP-712 contract on Ethereum Sepolia.
+            </p>
+            <div className="hero-feats">
+              <span><ShieldCheck size={13} strokeWidth={2.4} /> EIP-712 signed intents</span>
+              <span><Layers size={13} strokeWidth={2.4} /> Multi-LP route splitting</span>
+              <span><Lock size={13} strokeWidth={2.4} /> On-chain settlement guardrails</span>
+              <span><Cpu size={13} strokeWidth={2.4} /> Solver competition</span>
+            </div>
+          </div>
+          <div className="hero-banner-stats">
+            <div className="hero-stat">
+              <p>Intents</p>
+              <h4>
+                <AnimatedCounter value={intents.length} />
+              </h4>
+              <span>Tracked this session</span>
+            </div>
+            <div className="hero-stat">
+              <p>Open</p>
+              <h4>
+                <AnimatedCounter value={openIntentsCount} />
+              </h4>
+              <span>Awaiting fill</span>
+            </div>
+            <div className="hero-stat">
+              <p>Fill Rate</p>
+              <h4>
+                <AnimatedCounter value={fillRate} suffix="%" />
+              </h4>
+              <span>Latest intent progress</span>
+            </div>
+          </div>
+        </motion.section>
         <header className="topbar">
           <div className="topbar-main">
             <p className="eyebrow">SilentSignal Control Surface</p>
             <h2 className="page-title">{viewMeta.title}</h2>
             <p className="subtitle">{viewMeta.subtitle}</p>
-            <p className="value-prop">
-              SilentSignal lets users execute high-size intents with better privacy and fill quality:
-              solver agents confidentially split routing across multiple LP venues under on-chain
-              guardrails.
-            </p>
           </div>
           <div className="topbar-metrics">
             <div className="topbar-metric">
               <span>Open</span>
-              <strong>{openIntentsCount}</strong>
+              <strong>
+                <AnimatedCounter value={openIntentsCount} />
+              </strong>
             </div>
             <div className="topbar-metric">
               <span>Executed</span>
-              <strong>{executedIntentsCount}</strong>
+              <strong>
+                <AnimatedCounter value={executedIntentsCount} />
+              </strong>
             </div>
             <div className="topbar-metric">
               <span>Fill</span>
-              <strong>{fillRate}%</strong>
+              <strong>
+                <AnimatedCounter value={fillRate} suffix="%" />
+              </strong>
             </div>
           </div>
-          {walletAddress ? (
-            <div className="topbar-wallet">
-              <div className="wallet-pill">Connected {shortAddress(walletAddress)}</div>
-            </div>
-          ) : null}
         </header>
         {activeView === 'intent' ? (
         <>
@@ -1377,8 +1654,9 @@ function App() {
           </label>
           <p className="field-help">Wallet identity is never shown directly in the public intent feed.</p>
 
-          <button type="submit" disabled={loading || resolving}>
-            {loading ? 'Publishing...' : 'Publish Intent'}
+          <button type="submit" className="live-step-btn primary" disabled={loading || resolving}>
+            {loading ? <Loader2 size={14} className="spin" /> : <Rocket size={14} />}
+            {loading ? 'Publishing...' : 'Publish Stealth Intent'}
           </button>
           <label className="toggle-row">
             <input
@@ -1386,9 +1664,16 @@ function App() {
               checked={mevShieldEnabled}
               onChange={(event) => setMevShieldEnabled(event.target.checked)}
             />
-            <span>MEV Shield mode (private relay + commit-reveal + allowlist)</span>
+            <span>
+              {mevShieldEnabled ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />} MEV
+              Shield mode (private relay + commit-reveal + allowlist)
+            </span>
           </label>
-          {error ? <p className="error">{error}</p> : null}
+          {error ? (
+            <p className="error">
+              <XCircle size={13} strokeWidth={2.4} /> {error}
+            </p>
+          ) : null}
           </form>
 
           <section className="panel hero-metric">
@@ -1482,16 +1767,20 @@ function App() {
               <div className="demo-actions">
                 <button
                   type="button"
+                  className="live-step-btn primary"
                   onClick={() => handleRunOneEthDemo('buy')}
                   disabled={demoLoading || loading}
                 >
+                  {demoLoading ? <Loader2 size={14} className="spin" /> : <PlayCircle size={14} />}
                   {demoLoading ? 'Simulating...' : 'Simulate Buy with 1 ETH'}
                 </button>
                 <button
                   type="button"
+                  className="live-step-btn"
                   onClick={() => handleRunOneEthDemo('sell')}
                   disabled={demoLoading || loading}
                 >
+                  {demoLoading ? <Loader2 size={14} className="spin" /> : <TrendingUp size={14} />}
                   {demoLoading ? 'Simulating...' : 'Simulate Sell worth 1 ETH'}
                 </button>
               </div>
@@ -1535,9 +1824,9 @@ function App() {
               <div className="clarity-note">
                 Live settlement uses the fields below (Sepolia). It does not use the Chain selector from Step 1.
               </div>
-              {!hasDefinedIntent ? (
-                <p className="field-help">Publish an intent in Step 1 to enable Sign/Lock/Approve/Fill.</p>
-              ) : null}
+              <p className="field-help">
+                You can execute directly from this panel. Step 1 intent publishing is optional for live testing.
+              </p>
               <div className="preflight">
                 <p className="nav-label">Preflight checks</p>
                 <ul className="check-list">
@@ -1630,21 +1919,69 @@ function App() {
                   />
                 </label>
               </div>
-              <div className="demo-actions">
-                <button type="button" onClick={connectWallet} disabled={liveWorking}>
-                  {liveWorking ? 'Working...' : walletAddress ? 'Wallet Connected' : 'Connect Wallet'}
+              <div className="demo-actions live-actions">
+                <button
+                  type="button"
+                  className="live-step-btn"
+                  onClick={connectWallet}
+                  disabled={liveWorking}
+                >
+                  {liveWorking ? (
+                    <Loader2 size={14} className="spin" />
+                  ) : walletAddress ? (
+                    <Check size={14} />
+                  ) : (
+                    <Wallet size={14} />
+                  )}
+                  {liveWorking
+                    ? 'Working...'
+                    : walletAddress
+                      ? 'Wallet Connected'
+                      : 'Connect Wallet'}
                 </button>
-                <button type="button" onClick={signLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
-                  {liveWorking ? 'Working...' : '1) Sign'}
+                <button
+                  type="button"
+                  className="live-step-btn"
+                  onClick={signLiveIntent}
+                  disabled={liveWorking || !walletAddress}
+                >
+                  {liveWorking ? <Loader2 size={14} className="spin" /> : <PenTool size={14} />}
+                  1) Sign Intent
                 </button>
-                <button type="button" onClick={lockLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
-                  {liveWorking ? 'Working...' : '2) Lock'}
+                <button
+                  type="button"
+                  className="live-step-btn"
+                  onClick={lockLiveIntent}
+                  disabled={liveWorking || !walletAddress}
+                >
+                  {liveWorking ? <Loader2 size={14} className="spin" /> : <Lock size={14} />}
+                  2) Lock ETH
                 </button>
-                <button type="button" onClick={approveLiveToken} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
-                  {liveWorking ? 'Working...' : '2.5) Approve Token'}
+                <button
+                  type="button"
+                  className="live-step-btn"
+                  onClick={approveLiveToken}
+                  disabled={liveWorking || !walletAddress}
+                >
+                  {liveWorking ? <Loader2 size={14} className="spin" /> : <ShieldCheck size={14} />}
+                  2.5) Approve Token
                 </button>
-                <button type="button" onClick={fillLiveIntent} disabled={liveWorking || !walletAddress || !hasDefinedIntent}>
-                  {liveWorking ? 'Working...' : '3) Fill'}
+                <button
+                  type="button"
+                  className="live-step-btn primary"
+                  onClick={fillLiveIntent}
+                  disabled={liveWorking || !walletAddress}
+                >
+                  {liveWorking ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+                  3) Fill Intent
+                </button>
+                <button
+                  type="button"
+                  className="live-step-btn ghost"
+                  onClick={resetLiveAction}
+                >
+                  <Activity size={14} />
+                  Unlock Buttons
                 </button>
               </div>
               <label className="toggle-row">
@@ -1658,44 +1995,61 @@ function App() {
               <p className="field-help">
                 Recommended sequence: connect -&gt; sign -&gt; lock -&gt; approve -&gt; fill
               </p>
-              {liveStatus ? <p className="muted">{liveStatus}</p> : null}
+              {liveStatus ? <p className="muted live-status-line">{liveStatus}</p> : null}
               {liveTxHash ? (
-                <p className="muted">
-                  Tx:{' '}
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${liveTxHash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {liveTxHash}
-                  </a>
-                </p>
+                <div className="live-tx-card">
+                  <div>
+                    <span className="live-tx-label">
+                      <Check size={12} strokeWidth={2.6} /> Latest tx confirmed
+                    </span>
+                    <code className="tx-hash">{liveTxHash}</code>
+                  </div>
+                  <div className="live-tx-actions">
+                    <CopyButton value={liveTxHash} label="Copy tx hash" />
+                    <a
+                      className="explorer-link"
+                      href={`https://sepolia.etherscan.io/tx/${liveTxHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={13} />
+                      Etherscan
+                    </a>
+                  </div>
+                </div>
               ) : null}
             </article> : null}
           </div>
           {intentSignature ? <p className="field-help">Signature captured: {intentSignature.slice(0, 20)}...</p> : null}
           <div className="live-proof">
-            <p className="nav-label">Verified Sepolia examples</p>
+            <p className="nav-label">
+              <Radio size={12} strokeWidth={2.4} /> Verified Sepolia examples
+            </p>
             <ul className="live-explainers">
               {LIVE_EXECUTION_EXPLAINERS.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-            <ul className="demo-routes">
+            <ul className="demo-routes verified-tx-list">
               {LIVE_DEMO_TXS.map((tx) => (
                 <li key={tx.hash}>
-                  <div>
+                  <div className="verified-tx-main">
                     <strong>{tx.label}</strong>
-                    <p className="muted">{tx.amount} - {tx.note}</p>
-                    <p className="tx-hash">{tx.hash}</p>
+                    <p className="muted">{tx.amount} &middot; {tx.note}</p>
+                    <code className="tx-hash">{tx.hash}</code>
                   </div>
-                  <a
-                    href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View Tx
-                  </a>
+                  <div className="verified-tx-actions">
+                    <CopyButton value={tx.hash} label="Copy tx hash" />
+                    <a
+                      className="explorer-link"
+                      href={`https://sepolia.etherscan.io/tx/${tx.hash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <ExternalLink size={13} />
+                      View
+                    </a>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1705,15 +2059,17 @@ function App() {
             </div>
           </div>
           <div className="mev-inline">
-            <p className="nav-label">Protection controls</p>
+            <p className="nav-label">
+              <ShieldAlert size={12} strokeWidth={2.4} /> Protection controls
+            </p>
             <ul className="mev-list">
-              <li><strong>Private relay</strong></li>
-              <li><strong>Commit-reveal</strong></li>
-              <li><strong>Short-lived signed intents</strong></li>
-              <li><strong>Guardrails on settlement</strong></li>
-              <li><strong>Randomized slices</strong></li>
-              <li><strong>Solver allowlist</strong></li>
-              <li><strong>Batch auction window</strong></li>
+              <li><Radio size={13} /><strong>Private relay</strong></li>
+              <li><EyeOff size={13} /><strong>Commit-reveal</strong></li>
+              <li><Lock size={13} /><strong>Short-lived signed intents</strong></li>
+              <li><ShieldCheck size={13} /><strong>Guardrails on settlement</strong></li>
+              <li><Layers size={13} /><strong>Randomized slices</strong></li>
+              <li><Cpu size={13} /><strong>Solver allowlist</strong></li>
+              <li><Activity size={13} /><strong>Batch auction window</strong></li>
             </ul>
           </div>
         </section>
@@ -1932,9 +2288,11 @@ function App() {
               <h2>Solver Match Engine</h2>
               <button
                 type="button"
+                className="live-step-btn"
                 onClick={handleDiscoverSolvers}
                 disabled={!latestIntent || loading || resolving}
               >
+                {loading ? <Loader2 size={14} className="spin" /> : <Search size={14} />}
                 {loading ? 'Scanning...' : 'Discover Solvers'}
               </button>
             </div>
@@ -1971,7 +2329,13 @@ function App() {
                     </li>
                   ))}
                 </ul>
-                <button type="button" onClick={handleResolveIntent} disabled={resolving}>
+                <button
+                  type="button"
+                  className="live-step-btn primary"
+                  onClick={handleResolveIntent}
+                  disabled={resolving}
+                >
+                  {resolving ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
                   {resolving ? 'Executing...' : 'Resolve Intent (Partial Fill)'}
                 </button>
                 <p className="field-help">
